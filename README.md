@@ -1,4 +1,6 @@
 # zuumb
+<img width="1895" height="857" alt="image" src="https://github.com/user-attachments/assets/541c9e0c-c63c-4b73-9e84-ec26d7ac97a2" />
+
 
 An AI-Native Detection & Response (AIDR) layer on top of [Wazuh](https://wazuh.com):
 Wazuh alert → LLM triage verdict → entity/time correlation into incidents →
