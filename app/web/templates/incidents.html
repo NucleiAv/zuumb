@@ -1,8 +1,17 @@
 {% extends "base.html" %}
 {% block title %}Incidents{% endblock %}
 {% block breadcrumb %}<span class="here">Incidents</span>{% endblock %}
+{% set triaging = stats.triage.done < stats.triage.total %}
+{% block head %}{% if triaging %}<meta http-equiv="refresh" content="8">{% endif %}{% endblock %}
 {% block body %}
 <h1>Incidents ({{ incidents|length }})</h1>
+
+{% if triaging %}
+<p class="banner">Triaging new alerts — <b>{{ stats.triage.done }}</b> / {{ stats.triage.total }} done.
+  Incidents and charts fill in as it catches up; this page auto-refreshes.</p>
+{% endif %}
+<p class="subtle">An <b>alert</b> is one Wazuh detection. An <b>incident</b> is alerts sharing a host, IP,
+  or user within {{ stats.window_minutes }} min — so a burst on one host becomes a single incident.</p>
 
 <div class="rangebar">
   <span class="muted">time range:</span>

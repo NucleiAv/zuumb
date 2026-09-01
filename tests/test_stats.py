@@ -100,15 +100,51 @@ def test_by_mitre_groups_verdicts_by_technique():
     assert st["by_mitre"] == [["T1190", 2, "high"]]  # None technique dropped; worst = malicious
 
 
-def test_timeline_buckets_hourly_and_counts_incidents():
-    _seed()
+def test_timeline_hourly_for_wide_span():
     with get_session() as s:
+        s.add_all([
+            Alert(wazuh_alert_id="w1", timestamp=datetime(2026, 8, 28, 14, 3), rule_id="1",
+                  rule_description="x", agent_name="h", raw_json="{}"),
+            Alert(wazuh_alert_id="w2", timestamp=datetime(2026, 8, 28, 20, 5), rule_id="1",
+                  rule_description="x", agent_name="h", raw_json="{}"),
+        ])
+        s.commit()
         tl = compute_stats(s)["timeline"]
+    assert tl["labels"][0] == "08-28 14:00" and tl["labels"][-1] == "08-28 20:00"
+    assert tl["alerts"][0] == 1 and tl["alerts"][-1] == 1
 
-    # 14:00 and 15:00 buckets span the seeded alerts
-    assert tl["labels"] == ["08-28 14:00", "08-28 15:00"]
-    assert tl["alerts"] == [2, 1]
-    assert tl["incidents"] == [1, 1]  # inc_hi active in 14:00, inc_md in 15:00
+
+def test_timeline_fine_buckets_and_incident_counts_for_short_burst():
+    with get_session() as s:
+        a = [Alert(wazuh_alert_id=f"b{m}", timestamp=datetime(2026, 8, 28, 14, m), rule_id="1",
+                   rule_description="x", agent_name="h", raw_json="{}") for m in (1, 11)]
+        s.add_all(a)
+        s.commit()
+        for x in a:
+            s.refresh(x)
+        inc = Incident(title="h", severity="high")
+        s.add(inc)
+        s.commit()
+        s.refresh(inc)
+        s.add_all([IncidentAlert(incident_id=inc.id, alert_id=a[0].id),
+                   IncidentAlert(incident_id=inc.id, alert_id=a[1].id)])
+        s.commit()
+        tl = compute_stats(s)["timeline"]
+    assert tl["labels"] == ["14:00", "14:05", "14:10"]  # 5-min bins
+    assert tl["alerts"] == [1, 0, 1]
+    assert tl["incidents"] == [1, 0, 1]
+
+
+def test_triage_progress_is_global_done_over_total():
+    _seed()  # 3 alerts, 0 verdicts
+    with get_session() as s:
+        assert compute_stats(s)["triage"] == {"done": 0, "total": 3}
+        a1 = s.exec(select(Alert).where(Alert.wazuh_alert_id == "a1")).one()
+        s.add(Verdict(alert_id=a1.id, verdict="benign", confidence=0.5,
+                      reasoning_text="x", model_version="t"))
+        s.commit()
+        # still global even when a window would exclude the triaged alert
+        assert compute_stats(s, since=datetime(2026, 8, 28, 15, 0))["triage"] == {"done": 1, "total": 3}
 
 
 def test_empty_db_stats_are_safe():

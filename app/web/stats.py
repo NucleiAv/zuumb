@@ -2,8 +2,9 @@
 from collections import Counter
 from datetime import timedelta
 
-from sqlmodel import Session, select
+from sqlmodel import Session, func, select
 
+from app.config import settings
 from app.db.models import Alert, Incident, IncidentAlert, Verdict
 
 TOP_N = 10
@@ -39,6 +40,12 @@ def compute_stats(session: Session, since=None, until=None) -> dict:
             "high_incidents": severity.get("high", 0),
             "hosts": len(hosts),
         },
+        # global (not window-scoped): how far the triage backlog has drained
+        "triage": {
+            "done": session.exec(select(func.count(func.distinct(Verdict.alert_id)))).one(),
+            "total": session.exec(select(func.count()).select_from(Alert)).one(),
+        },
+        "window_minutes": settings.correlation_window_minutes,
         "severity": {k: severity.get(k, 0) for k in ("low", "medium", "high")},
         "verdict_dist": {k: vdist.get(k, 0) for k in ("benign", "suspicious", "malicious")},
         "by_src_ip": _top(alerts, verdict, lambda a: a.src_ip),
@@ -76,34 +83,39 @@ def _heatmap(alerts: list[Alert]) -> dict:
     return {"days": DAYS, "matrix": matrix, "max": peak}
 
 
-def _floor_hour(ts):
-    return ts.replace(minute=0, second=0, microsecond=0)
-
-
 def _timeline(alerts: list[Alert], links: list[IncidentAlert]) -> dict:
     if not alerts:
         return {"labels": [], "alerts": [], "incidents": []}
 
     alert_incident = {link.alert_id: link.incident_id for link in links}  # correlate: 1 incident/alert
-    start, end = _floor_hour(min(a.timestamp for a in alerts)), _floor_hour(max(a.timestamp for a in alerts))
+    times = [a.timestamp for a in alerts]
+    fine = max(times) - min(times) < timedelta(hours=3)  # a burst: 5-min bins, else hourly
+    step = timedelta(minutes=5) if fine else timedelta(hours=1)
+    fmt = "%H:%M" if fine else "%m-%d %H:%M"
+
+    def floor(ts):
+        return (ts.replace(minute=ts.minute - ts.minute % 5, second=0, microsecond=0) if fine
+                else ts.replace(minute=0, second=0, microsecond=0))
+
+    start, end = floor(min(times)), floor(max(times))
     buckets = []
     t = start
     while t <= end:
         buckets.append(t)
-        t += timedelta(hours=1)
+        t += step
     pos = {b: i for i, b in enumerate(buckets)}
 
     alert_counts = [0] * len(buckets)
     incident_sets: list[set] = [set() for _ in buckets]
     for a in alerts:
-        i = pos[_floor_hour(a.timestamp)]
+        i = pos[floor(a.timestamp)]
         alert_counts[i] += 1
         inc = alert_incident.get(a.id)
         if inc is not None:
             incident_sets[i].add(inc)
 
     return {
-        "labels": [b.strftime("%m-%d %H:%M") for b in buckets],
+        "labels": [b.strftime(fmt) for b in buckets],
         "alerts": alert_counts,
         "incidents": [len(s) for s in incident_sets],
     }
