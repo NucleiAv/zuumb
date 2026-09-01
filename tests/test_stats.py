@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlmodel import select
 
@@ -100,39 +100,23 @@ def test_by_mitre_groups_verdicts_by_technique():
     assert st["by_mitre"] == [["T1190", 2, "high"]]  # None technique dropped; worst = malicious
 
 
-def test_timeline_hourly_for_wide_span():
+def test_events_feed_is_epoch_ms_incident_id_pairs_ascending():
+    _seed()  # a1 14:03, a2 14:40 -> inc_hi ; a3 15:05 -> inc_md
     with get_session() as s:
-        s.add_all([
-            Alert(wazuh_alert_id="w1", timestamp=datetime(2026, 8, 28, 14, 3), rule_id="1",
-                  rule_description="x", agent_name="h", raw_json="{}"),
-            Alert(wazuh_alert_id="w2", timestamp=datetime(2026, 8, 28, 20, 5), rule_id="1",
-                  rule_description="x", agent_name="h", raw_json="{}"),
-        ])
-        s.commit()
-        tl = compute_stats(s)["timeline"]
-    assert tl["labels"][0] == "08-28 14:00" and tl["labels"][-1] == "08-28 20:00"
-    assert tl["alerts"][0] == 1 and tl["alerts"][-1] == 1
+        ev = compute_stats(s)["events"]
+        inc_hi = s.exec(select(Incident).where(Incident.title == "web-01")).one()
+    assert [e[0] for e in ev] == sorted(e[0] for e in ev)  # ascending epoch-ms
+    assert ev[0][0] == int(datetime(2026, 8, 28, 14, 3, tzinfo=timezone.utc).timestamp() * 1000)
+    assert ev[0][1] == inc_hi.id and ev[2][1] != 0         # every seeded alert is correlated
 
 
-def test_timeline_fine_buckets_and_incident_counts_for_short_burst():
+def test_events_incident_id_is_zero_when_uncorrelated():
     with get_session() as s:
-        a = [Alert(wazuh_alert_id=f"b{m}", timestamp=datetime(2026, 8, 28, 14, m), rule_id="1",
-                   rule_description="x", agent_name="h", raw_json="{}") for m in (1, 11)]
-        s.add_all(a)
+        s.add(Alert(wazuh_alert_id="u1", timestamp=datetime(2026, 8, 28, 12, 0), rule_id="1",
+                    rule_description="x", agent_name="h", raw_json="{}"))
         s.commit()
-        for x in a:
-            s.refresh(x)
-        inc = Incident(title="h", severity="high")
-        s.add(inc)
-        s.commit()
-        s.refresh(inc)
-        s.add_all([IncidentAlert(incident_id=inc.id, alert_id=a[0].id),
-                   IncidentAlert(incident_id=inc.id, alert_id=a[1].id)])
-        s.commit()
-        tl = compute_stats(s)["timeline"]
-    assert tl["labels"] == ["14:00", "14:05", "14:10"]  # 5-min bins
-    assert tl["alerts"] == [1, 0, 1]
-    assert tl["incidents"] == [1, 0, 1]
+        ev = compute_stats(s)["events"]
+    assert ev == [[int(datetime(2026, 8, 28, 12, 0, tzinfo=timezone.utc).timestamp() * 1000), 0]]
 
 
 def test_triage_progress_is_global_done_over_total():
@@ -151,17 +135,5 @@ def test_empty_db_stats_are_safe():
     with get_session() as s:
         st = compute_stats(s)
     assert st["kpis"] == {"alerts": 0, "incidents": 0, "high_incidents": 0, "hosts": 0}
-    assert st["timeline"] == {"labels": [], "alerts": [], "incidents": []}
+    assert st["events"] == []
     assert st["by_host"] == []
-    assert st["heatmap"]["max"] == 0
-    assert len(st["heatmap"]["matrix"]) == 7 and len(st["heatmap"]["matrix"][0]) == 24
-
-
-def test_heatmap_bins_alerts_by_weekday_and_hour():
-    _seed()  # a1/a2 at 2026-08-28 14:xx, a3 at 15:xx
-    dow = datetime(2026, 8, 28).weekday()
-    with get_session() as s:
-        hm = compute_stats(s)["heatmap"]
-    assert hm["matrix"][dow][14] == 2
-    assert hm["matrix"][dow][15] == 1
-    assert hm["max"] == 2

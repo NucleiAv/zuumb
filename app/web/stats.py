@@ -1,6 +1,11 @@
-"""Dashboard aggregates for the incidents page charts. Pure read, no new tables."""
+"""Dashboard aggregates for the incidents page charts. Pure read, no new tables.
+
+Timestamps stored naive-UTC; time-bucketed views (heatmap, timeline) are built
+client-side in the viewer's local zone from the raw `events` feed, so this module
+never buckets or formats by hour/weekday.
+"""
 from collections import Counter
-from datetime import timedelta
+from datetime import timezone
 
 from sqlmodel import Session, func, select
 
@@ -24,6 +29,7 @@ def compute_stats(session: Session, since=None, until=None) -> dict:
     alert_ids = {a.id for a in alerts}
 
     links = [x for x in session.exec(select(IncidentAlert)).all() if x.alert_id in alert_ids]
+    alert_incident = {x.alert_id: x.incident_id for x in links}
     inc_ids = {x.incident_id for x in links}
     incidents = [i for i in session.exec(select(Incident)).all() if i.id in inc_ids]
     verdict_rows = [v for v in session.exec(select(Verdict)).all() if v.alert_id in alert_ids]
@@ -52,8 +58,13 @@ def compute_stats(session: Session, since=None, until=None) -> dict:
         "by_host": _top(alerts, verdict, lambda a: a.agent_name),
         "by_rule": _top(alerts, verdict, lambda a: f"{a.rule_id} {a.rule_description}"),
         "by_mitre": _top_pairs((v.mitre_technique, _RANK.get(v.verdict, 0)) for v in verdict_rows),
-        "timeline": _timeline(alerts, links),
-        "heatmap": _heatmap(alerts),
+        # raw feed: [epoch_ms, incident_id or 0] per alert. The heatmap and timeline
+        # are bucketed from this in charts.js, in the viewer's local zone.
+        "events": sorted(
+            [int(a.timestamp.replace(tzinfo=timezone.utc).timestamp() * 1000),
+             alert_incident.get(a.id, 0)]
+            for a in alerts
+        ),
     }
 
 
@@ -74,48 +85,3 @@ def _top_pairs(label_rank_pairs) -> list[list]:
     return [[label, cnt, _SEV_NAME[rank]] for label, (cnt, rank) in top]
 
 
-def _heatmap(alerts: list[Alert]) -> dict:
-    """Alert volume by weekday (row) x hour-of-day (col)."""
-    matrix = [[0] * 24 for _ in range(7)]
-    for a in alerts:
-        matrix[a.timestamp.weekday()][a.timestamp.hour] += 1
-    peak = max((c for row in matrix for c in row), default=0)
-    return {"days": DAYS, "matrix": matrix, "max": peak}
-
-
-def _timeline(alerts: list[Alert], links: list[IncidentAlert]) -> dict:
-    if not alerts:
-        return {"labels": [], "alerts": [], "incidents": []}
-
-    alert_incident = {link.alert_id: link.incident_id for link in links}  # correlate: 1 incident/alert
-    times = [a.timestamp for a in alerts]
-    fine = max(times) - min(times) < timedelta(hours=3)  # a burst: 5-min bins, else hourly
-    step = timedelta(minutes=5) if fine else timedelta(hours=1)
-    fmt = "%H:%M" if fine else "%m-%d %H:%M"
-
-    def floor(ts):
-        return (ts.replace(minute=ts.minute - ts.minute % 5, second=0, microsecond=0) if fine
-                else ts.replace(minute=0, second=0, microsecond=0))
-
-    start, end = floor(min(times)), floor(max(times))
-    buckets = []
-    t = start
-    while t <= end:
-        buckets.append(t)
-        t += step
-    pos = {b: i for i, b in enumerate(buckets)}
-
-    alert_counts = [0] * len(buckets)
-    incident_sets: list[set] = [set() for _ in buckets]
-    for a in alerts:
-        i = pos[floor(a.timestamp)]
-        alert_counts[i] += 1
-        inc = alert_incident.get(a.id)
-        if inc is not None:
-            incident_sets[i].add(inc)
-
-    return {
-        "labels": [b.strftime(fmt) for b in buckets],
-        "alerts": alert_counts,
-        "incidents": [len(s) for s in incident_sets],
-    }

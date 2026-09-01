@@ -83,10 +83,11 @@ def test_pages_have_breadcrumb_and_widget_chrome():
     assert home.count('class="card-menu"') == 8  # 7 charts + heatmap
     assert home.count('data-stat=') == 8
 
-    # KPI summary cards (item 5) + activity heatmap (item 6)
+    # KPI summary cards (item 5) + activity heatmap (item 6, cells rendered client-side in local tz)
     assert 'class="kpis"' in home and home.count('class="kpi') == 5  # section + 4 cards
     assert "Total alerts" in home and "Hosts affected" in home
-    assert 'class="heatmap"' in home and 'class="hm-cell"' in home
+    assert 'href="/?severity=high"' in home              # High-severity card -> filtered list
+    assert 'id="c-heatmap"' in home and 'class="heatmap"' in home
 
     detail = client.get(f"/incidents/{iid}").text
     assert 'class="breadcrumb"' in detail
@@ -319,7 +320,8 @@ def test_timeline_panel_is_double_width_with_zoom():
 def test_time_range_and_custom_dates_filter():
     _seed_two_days()  # incidents on 2026-08-28 and 2026-08-29
     assert client.get("/").text.count('/incidents/') >= 2         # all
-    only28 = client.get("/?from=2026-08-28&to=2026-08-28").text
+    # client sends explicit UTC instants (computed from the viewer's local range)
+    only28 = client.get("/?from=2026-08-28T00:00:00Z&to=2026-08-28T23:59:59Z").text
     assert ">web-01<" in only28 and ">db-01<" not in only28
     assert 'class="chip on"' in client.get("/?range=7d").text     # range chip reflects state
 
@@ -341,8 +343,11 @@ def test_mitre_and_heatmap_cell_filters():
     # 2026-08-28 is a Friday (weekday 4), the web-01 alert is at hour 14
     by_cell = client.get("/?dow=4&hour=14").text
     assert ">web-01<" in by_cell and ">db-01<" not in by_cell
-    home = client.get("/").text
-    assert 'class="hm-cell"' in home and "?dow=" in home  # heatmap cells are links
+    # local-tz shift: the same alert lands in the previous hour's cell for a viewer at UTC+... no,
+    # tzmin is minutes to ADD to local for UTC, so UTC-60 (tzmin=-60) puts 14:00 UTC at 15:00 local
+    assert ">web-01<" in client.get("/?dow=4&hour=15&tzmin=-60").text
+    assert 'id="c-heatmap"' in client.get("/").text       # cells rendered client-side into this
+
 
 
 def test_incidents_index_redirects_to_root():

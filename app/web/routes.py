@@ -28,29 +28,28 @@ from app.web.stats import DAYS, compute_stats
 
 router = APIRouter()
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
+# every timestamp goes to the browser as ISO-8601 UTC; the client renders it local
+templates.env.filters["isoz"] = lambda dt: dt.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 _FILTER_COLS = {"rule": Alert.rule_id, "src_ip": Alert.src_ip, "host": Alert.agent_name}
-_RANGES = {"today": timedelta(0), "7d": timedelta(days=7), "30d": timedelta(days=30)}
+
+
+def _instant(s: str | None) -> datetime | None:
+    """ISO-8601 (with offset, as the client always sends) -> naive-UTC datetime."""
+    if not s:
+        return None
+    try:
+        dt = datetime.fromisoformat(s)  # 3.11+ parses the trailing Z
+    except ValueError:
+        return None
+    return dt.astimezone(timezone.utc).replace(tzinfo=None) if dt.tzinfo else dt
 
 
 def _time_window(p) -> tuple[datetime | None, datetime | None]:
-    """(since, until) from ?range= or ?from=&to=, else (None, None)."""
-    now = datetime.now(timezone.utc).replace(tzinfo=None)  # naive UTC, matches stored timestamps
-    rng = p.get("range")
-    if rng == "today":
-        return now.replace(hour=0, minute=0, second=0, microsecond=0), now
-    if rng in _RANGES:
-        return now - _RANGES[rng], now
-    frm, to = p.get("from"), p.get("to")
-    if frm or to:
-        try:
-            since = datetime.fromisoformat(frm) if frm else None
-            until = datetime.fromisoformat(to) + timedelta(days=1) if to else None  # inclusive day
-        except ValueError:
-            return None, None
-        return since, until
-    return None, None
+    """(since, until) as naive-UTC from ?from=&to= — the client computes these from
+    the viewer's local range and sends explicit UTC instants."""
+    return _instant(p.get("from")), _instant(p.get("to"))
 
 
 @router.get("/", response_class=HTMLResponse)
@@ -59,6 +58,8 @@ def incidents_list(request: Request):
     since, until = _time_window(p)
     entity = {k: v for k in _FILTER_COLS if (v := p.get(k))}
     mitre, dow, hour = p.get("mitre"), p.get("dow"), p.get("hour")
+    severity = p.get("severity")
+    tzmin = int(p.get("tzmin") or 0)  # JS getTimezoneOffset(): minutes to add to local -> UTC
     sort_dir = "asc" if p.get("dir") == "asc" else "desc"
 
     with get_session() as s:
@@ -92,22 +93,30 @@ def incidents_list(request: Request):
                     s.exec(select(Verdict).where(Verdict.mitre_technique == mitre)).all()})
         if dow is not None and hour is not None:
             di, hi = int(dow), int(hour)
-            # ponytail: weekday/hour has no SQLite fn -> filter in Python (fine at POC scale)
+            # weekday/hour has no SQLite fn -> filter in Python (fine at POC scale).
+            # tzmin shifts the stored UTC instant into the viewer's local zone first,
+            # so the cell matches the heatmap the viewer actually clicked.
+            local = lambda ts: ts - timedelta(minutes=tzmin)  # noqa: E731
             narrow({a.id for a in s.exec(select(Alert)).all()
-                    if a.timestamp.weekday() == di and a.timestamp.hour == hi})
+                    if local(a.timestamp).weekday() == di and local(a.timestamp).hour == hi})
 
         if keep is not None:
             incidents = [i for i in incidents if i.id in keep]
 
+        if severity:
+            incidents = [i for i in incidents if i.severity == severity]
+
     active = dict(entity)
     if mitre:
         active["mitre"] = mitre
+    if severity:
+        active["severity"] = severity
     if dow is not None and hour is not None:
         active["cell"] = f"{DAYS[int(dow)]} {int(hour):02d}:00"
     return templates.TemplateResponse(request, "incidents.html", {
         "incidents": incidents, "counts": counts, "stats": stats,
         "filters": active, "sort_dir": sort_dir, "time_range": p.get("range"),
-        "date_from": p.get("from"), "date_to": p.get("to"),
+        "date_from": p.get("fromd"), "date_to": p.get("tod"),  # raw local dates, for the inputs
     })
 
 

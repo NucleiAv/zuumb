@@ -13,15 +13,15 @@
 <p class="subtle">An <b>alert</b> is one Wazuh detection. An <b>incident</b> is alerts sharing a host, IP,
   or user within {{ stats.window_minutes }} min — so a burst on one host becomes a single incident.</p>
 
-<div class="rangebar">
+<div class="rangebar" data-rangebar>
   <span class="muted">time range:</span>
   {% for key, label in [("", "All"), ("today", "Today"), ("7d", "Last 7 days"), ("30d", "Last 30 days")] %}
   <a class="chip {{ 'on' if time_range == key or (not time_range and not key and not date_from and not date_to) }}"
-     href="{{ '/' if not key else '/?range=' + key }}">{{ label }}</a>
+     data-range="{{ key }}" href="{{ '/' if not key else '/?range=' + key }}">{{ label }}</a>
   {% endfor %}
   <form method="get" class="custom-range">
-    <input type="date" name="from" value="{{ date_from or '' }}">
-    <input type="date" name="to" value="{{ date_to or '' }}">
+    <input type="date" name="fromd" value="{{ date_from or '' }}">
+    <input type="date" name="tod" value="{{ date_to or '' }}">
     <button type="submit">Apply</button>
   </form>
 </div>
@@ -35,10 +35,10 @@
 {% endif %}
 
 <section class="kpis">
-  <div class="kpi"><div class="num">{{ stats.kpis.alerts }}</div><div class="lbl">Total alerts</div></div>
-  <div class="kpi"><div class="num">{{ stats.kpis.incidents }}</div><div class="lbl">Total incidents</div></div>
-  <div class="kpi high"><div class="num">{{ stats.kpis.high_incidents }}</div><div class="lbl">High-severity incidents</div></div>
-  <div class="kpi"><div class="num">{{ stats.kpis.hosts }}</div><div class="lbl">Hosts affected</div></div>
+  <a class="kpi" href="/"><div class="num">{{ stats.kpis.alerts }}</div><div class="lbl">Total alerts</div></a>
+  <a class="kpi" href="/"><div class="num">{{ stats.kpis.incidents }}</div><div class="lbl">Total incidents</div></a>
+  <a class="kpi high" href="/?severity=high"><div class="num">{{ stats.kpis.high_incidents }}</div><div class="lbl">High-severity incidents</div></a>
+  <a class="kpi" href="#c-host"><div class="num">{{ stats.kpis.hosts }}</div><div class="lbl">Hosts affected</div></a>
 </section>
 
 <section class="charts">
@@ -78,22 +78,7 @@
               title="Export panel data (CSV)" aria-label="Export panel data as CSV">⋯</button>
     </div>
     <div class="card-body">
-      <div class="heatmap" style="grid-template-columns: 34px repeat(24, 1fr);">
-        <span class="hm-corner"></span>
-        {% for h in range(24) %}<span class="hm-hour">{{ '%02d'|format(h) }}</span>{% endfor %}
-        {% set peak = stats.heatmap.max %}
-        {% for row in stats.heatmap.matrix %}
-        {% set day = stats.heatmap.days[loop.index0] %}
-        {% set dow = loop.index0 %}
-        <span class="hm-day">{{ day }}</span>
-        {% for count in row %}
-        {% set pct = (8 + count * 92 // peak) if (peak and count) else 0 %}
-        <a class="hm-cell" title="{{ day }} {{ '%02d'|format(loop.index0) }}:00 — {{ count }} alert(s)"
-           href="{{ request.url.include_query_params(dow=dow, hour=loop.index0) }}"
-           style="background: color-mix(in srgb, var(--accent) {{ pct }}%, transparent);"></a>
-        {% endfor %}
-        {% endfor %}
-      </div>
+      <div id="c-heatmap" class="heatmap" style="grid-template-columns: 34px repeat(24, 1fr);"></div>
     </div>
   </div>
 </section>
@@ -114,7 +99,7 @@
       <td class="sev-{{ inc.severity }}">{{ inc.severity }}</td>
       <td>{{ inc.status }}</td>
       <td>{{ counts.get(inc.id, 0) }}</td>
-      <td class="muted">{{ inc.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+      <td class="muted"><time datetime="{{ inc.created_at|isoz }}">{{ inc.created_at|isoz }}</time></td>
     </tr>
   {% endfor %}
   </tbody>

@@ -19,7 +19,7 @@
       <td class="sev-{{ r.severity }}">{{ r.severity }}</td>
       <td>{{ r.alerts }}</td>
       <td>{{ r.chain.status }}</td>
-      <td class="muted">{{ r.chain.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+      <td class="muted"><time datetime="{{ r.chain.created_at|isoz }}">{{ r.chain.created_at|isoz }}</time></td>
     </tr>
   {% endfor %}
   </tbody>
