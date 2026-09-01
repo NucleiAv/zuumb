@@ -1,4 +1,4 @@
-# AI-SOC-XDR
+# zuumb
 
 An AI-Native Detection & Response (AIDR) layer on top of [Wazuh](https://wazuh.com):
 Wazuh alert → LLM triage verdict → entity/time correlation into incidents →
