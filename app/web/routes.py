@@ -30,6 +30,10 @@ router = APIRouter()
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 # every timestamp goes to the browser as ISO-8601 UTC; the client renders it local
 templates.env.filters["isoz"] = lambda dt: dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+# cache-bust /static/charts.js on its mtime, so a restart always invalidates a stale bundle
+templates.env.globals["charts_v"] = int(
+    (Path(__file__).parent / "static" / "charts.js").stat().st_mtime
+)
 
 
 _FILTER_COLS = {"rule": Alert.rule_id, "src_ip": Alert.src_ip, "host": Alert.agent_name}
@@ -58,7 +62,7 @@ def incidents_list(request: Request):
     since, until = _time_window(p)
     entity = {k: v for k in _FILTER_COLS if (v := p.get(k))}
     mitre, dow, hour = p.get("mitre"), p.get("dow"), p.get("hour")
-    severity = p.get("severity")
+    verdict, severity = p.get("verdict"), p.get("severity")
     tzmin = int(p.get("tzmin") or 0)  # JS getTimezoneOffset(): minutes to add to local -> UTC
     sort_dir = "asc" if p.get("dir") == "asc" else "desc"
 
@@ -91,6 +95,9 @@ def incidents_list(request: Request):
         if mitre:
             narrow({v.alert_id for v in
                     s.exec(select(Verdict).where(Verdict.mitre_technique == mitre)).all()})
+        if verdict:
+            narrow({v.alert_id for v in
+                    s.exec(select(Verdict).where(Verdict.verdict == verdict)).all()})
         if dow is not None and hour is not None:
             di, hi = int(dow), int(hour)
             # weekday/hour has no SQLite fn -> filter in Python (fine at POC scale).
@@ -109,6 +116,8 @@ def incidents_list(request: Request):
     active = dict(entity)
     if mitre:
         active["mitre"] = mitre
+    if verdict:
+        active["verdict"] = verdict
     if severity:
         active["severity"] = severity
     if dow is not None and hour is not None:

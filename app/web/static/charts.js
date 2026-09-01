@@ -75,11 +75,26 @@
     });
   }
 
-  function doughnut(id, labels, data, colors, p) {
+  // filterKey set -> clicking a slice filters the incidents list by that field
+  function doughnut(id, labels, data, colors, p, filterKey) {
+    var o = opts(p, false);
+    if (filterKey) {
+      o.onClick = function (evt, els) {
+        if (!els.length) return;
+        var u = new URL(location.href);                 // keep the active time range
+        u.searchParams.set(filterKey, labels[els[0].index]);
+        u.searchParams.delete('dow');
+        u.searchParams.delete('hour');
+        location.href = u.pathname + u.search;
+      };
+      o.onHover = function (evt, els) {
+        evt.native.target.style.cursor = els.length ? 'pointer' : 'default';
+      };
+    }
     return new Chart(document.getElementById(id), {
       type: 'doughnut',
       data: { labels: labels, datasets: [{ data: data, backgroundColor: colors, borderColor: cssVar('--bg') }] },
-      options: opts(p, false),
+      options: o,
     });
   }
 
@@ -160,7 +175,7 @@
     var sev3 = [p.sev.low, p.sev.medium, p.sev.high];
 
     instances.push(doughnut('c-severity', ['low', 'medium', 'high'],
-      [S.severity.low, S.severity.medium, S.severity.high], sev3, p));
+      [S.severity.low, S.severity.medium, S.severity.high], sev3, p, 'severity'));
 
     var tl = buildTimeline(S.events || []);
     renderHeatmap(buildHeatmap(S.events || []));
@@ -187,7 +202,7 @@
     instances.push(sevBar('c-rule', S.by_rule, p, 'rule'));
     instances.push(sevBar('c-mitre', S.by_mitre, p, 'mitre'));  // -> incidents with a verdict tagged this technique
     instances.push(doughnut('c-verdicts', ['benign', 'suspicious', 'malicious'],
-      [S.verdict_dist.benign, S.verdict_dist.suspicious, S.verdict_dist.malicious], sev3, p));
+      [S.verdict_dist.benign, S.verdict_dist.suspicious, S.verdict_dist.malicious], sev3, p, 'verdict'));
   }
 
   // --- panel "⋯" -> download that panel's data as CSV -------------------------

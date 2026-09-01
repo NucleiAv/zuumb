@@ -349,6 +349,20 @@ def test_mitre_and_heatmap_cell_filters():
     assert 'id="c-heatmap"' in client.get("/").text       # cells rendered client-side into this
 
 
+def test_severity_and_verdict_donut_filters():
+    _seed_two_days()  # both incidents seeded "low"; verdicts: web-01 & db-01 both "suspicious"
+    with get_session() as s:
+        inc = s.exec(select(Incident).where(Incident.title == "web-01")).one()
+        inc.severity = "high"
+        s.commit()
+    hi = client.get("/?severity=high").text
+    assert ">web-01<" in hi and ">db-01<" not in hi           # severity-donut slice click
+    susp = client.get("/?verdict=suspicious").text
+    assert ">web-01<" in susp and ">db-01<" in susp           # verdict-donut slice click
+    assert client.get("/?verdict=malicious").text.count("/incidents/") == 0
+    assert 'href="/#c-host"' in client.get("/").text          # Hosts KPI clears other filters
+
+
 
 def test_incidents_index_redirects_to_root():
     r = client.get("/incidents", follow_redirects=False)
