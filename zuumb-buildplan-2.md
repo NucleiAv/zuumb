@@ -315,6 +315,8 @@ correlation engine as specified. When done, run /ponytail-review on it.
 
 Only start this section once Section 9's MVP done-criteria are met against synthetic data. These phases move zuumb from "demo on synthetic alerts" to "runs against a real Wazuh instance with human-approved real-world response actions," plus makes it publicly installable. Same discipline as before: persona first, `/ponytail-review` after each step, `/ponytail-audit` at each phase checkpoint, stop and show results before moving on.
 
+**UI/UX continuity requirement, applies to every phase in this section:** the dashboard's current look and interaction model (the theme toggle, KPI cards, chart panels, clickable drill-downs, the chain visualization, the styling established across Phases 6b/6c) is the baseline, not a placeholder to be replaced. Phases 12-15 add real data and real actions behind that interface, they do not redesign it. If a phase's checkpoint shows the UI regressed in cleanliness or responsiveness (visual clutter, dead-feeling interactions, inconsistent styling creeping back in) relative to where Phase 7 left it, that's a defect to fix before moving on, not an acceptable tradeoff for shipping the backend feature faster. Where new UI is needed (Phase 14's action approval flow, execution results, audit log view), it must match the existing widget chrome, theme variables, and interaction patterns already established, not introduce a new visual style.
+
 ### Credentials check (do this before Phase 12)
 
 Two separate Wazuh API credentials, not one, different privilege levels:
@@ -383,3 +385,16 @@ Checkpoint: test the full flow end to end against a real (non-production, throwa
 6. **README must clearly state the dry-run default from Phase 14** and what flipping it off means, anyone pulling this publicly needs that spelled out before they connect it to a real environment with real response actions enabled.
 
 Checkpoint: `/ponytail-audit` on the full public-facing artifact (Dockerfile, compose files, README, workflow), test the quickstart on a genuinely clean machine or fresh VM, not your dev machine which already has half the setup done implicitly.
+
+### Phase 16 — UI/UX Refinement at Scale
+
+*Persona: Frontend Developer, then Reality Checker.*
+
+Goal: confirm the existing UI/UX (established in Phases 6b/6c, carried through per the continuity requirement above) still holds up cleanly once real Wazuh traffic is flowing at volume, and tighten anything that doesn't. This is a polish pass, not a redesign.
+
+1. **Density check under real load.** With days of live traffic (from Phase 12/13), incident counts, chain counts, and chart data points will be far higher than the synthetic set. Confirm tables paginate sensibly, charts don't become unreadable at high cardinality (e.g. "Top hosts" with 50+ hosts instead of 5), and the heatmap/time-series charts stay legible rather than turning into noise.
+2. **Interaction smoothness re-check.** Re-verify the loading states, debouncing, and scroll-zoom behavior from earlier phases against real response latency (live Wazuh polling and real action dispatch both introduce latency synthetic/offline mode didn't have) — a spinner that never resolves smoothly, or a filter that feels laggy against real data volume, is a regression even if the underlying data is correct.
+3. **New Phase 14 UI (approval flow, execution results, audit log) styling audit.** Confirm these new views read as part of the same product as the rest of the dashboard, not bolted on, same widget chrome, same theme variables, same spacing conventions.
+4. **Full theme pass in both modes** against the now-larger, real dataset, re-confirm nothing introduced in Phases 12-15 broke dark-mode contrast, date-picker styling, or dropdown styling fixed in earlier rounds.
+
+Checkpoint: side-by-side screenshots of the dashboard before this section (end of Phase 7) and after (end of Phase 16) should look like the same product, cleaner and handling more data gracefully, not a different design. `/ponytail-review`, then `/ponytail-audit` to close out the whole plan.
