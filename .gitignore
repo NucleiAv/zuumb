@@ -24,3 +24,6 @@ assets/logo-originals/
 .claude/settings.local.json
 .vscode/
 .idea/
+
+# db snapshots / backups
+*.bak
