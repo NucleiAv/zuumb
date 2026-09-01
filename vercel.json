@@ -8,6 +8,18 @@
     {
       "src": "googlef0d21393cf8ca719.html",
       "use": "@vercel/static"
+    },
+    {
+      "src": "favicon.ico",
+      "use": "@vercel/static"
+    },
+    {
+      "src": "favicon-light.png",
+      "use": "@vercel/static"
+    },
+    {
+      "src": "favicon-dark.png",
+      "use": "@vercel/static"
     }
   ]
 }
