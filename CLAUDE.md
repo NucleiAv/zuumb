@@ -1,6 +1,6 @@
-# CLAUDE.md — AI-SOC-XDR
+# CLAUDE.md — zuumb
 
-Full build plan: [ai-soc-xdr-buildplan.md](ai-soc-xdr-buildplan.md). Read it before starting a phase.
+Full build plan: [zuumb-buildplan.md](zuumb-buildplan.md). Read it before starting a phase.
 
 ## What this is
 An AI-Native Detection & Response layer on top of Wazuh: pull alerts → LLM triage

@@ -1,4 +1,4 @@
-# AI-SOC-XDR local infra.
+# zuumb local infra.
 #
 # Wazuh is NOT defined here — this project expects an existing Wazuh single-node
 # stack (you have `single-node-*` v5.0.0-beta4 running via WSL Docker). If you

@@ -1,6 +1,6 @@
-# AI-SOC-XDR — Build Plan for Claude Code
+# zuumb — Build Plan for Claude Code
 
-**Project codename:** ai-soc-xdr (Wazuh + LLM triage/correlation layer)
+**Project codename:** zuumb (Wazuh + LLM triage/correlation layer)
 **Inspiration:** CipherData AIDR (AI-Native Detection & Response) — triage agent → correlation engine → attack chain → response tasks, human-approved.
 **Author context:** Built on top of existing Wazuh detection rule work (Caddy ruleset, 29 rules, merged upstream). This project is the natural next layer: detection engineering → AI-native detection.
 
@@ -203,7 +203,7 @@ analyst_feedback
 ## 6. Repo Structure
 
 ```
-ai-soc-xdr/
+zuumb/
 ├── CLAUDE.md                     # this doc, or a pointer to docs/BUILD_PLAN.md
 ├── docker-compose.yml            # wazuh single-node + app + postgres
 ├── .env.example

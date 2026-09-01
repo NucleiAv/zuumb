@@ -5,7 +5,7 @@ Wazuh alert → LLM triage verdict → entity/time correlation into incidents �
 (MVP) attack chain, response-task proposals, analyst feedback loop, dashboard.
 
 Built as the next layer on top of prior Wazuh detection-rule work. See
-[ai-soc-xdr-buildplan.md](ai-soc-xdr-buildplan.md) for the full plan.
+[zuumb-buildplan.md](zuumb-buildplan.md) for the full plan.
 
 ## Prerequisites
 - Python 3.11+
@@ -50,7 +50,7 @@ Postgres (MVP): `docker compose up -d postgres`, then set `DATABASE_URL` in `.en
 ## Dashboard (Phase 6)
 
 ```bash
-D:/ai-soc-xdr/.venv/Scripts/python.exe -m uvicorn app.main:app --reload
+.venv/Scripts/python -m uvicorn app.main:app --reload
 ```
 Then open http://localhost:8000 — incidents list → incident detail (alerts + verdicts).
 Populate it first with `python -m scripts.run_poc [--offline]`.

@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     wazuh_api_password: str = "wazuh"
     wazuh_verify_ssl: bool = False
 
-    database_url: str = "sqlite:///./ai_soc_xdr.db"
+    database_url: str = "sqlite:///./zuumb.db"
 
     correlation_window_minutes: int = 30
 
