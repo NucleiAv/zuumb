@@ -9,5 +9,4 @@ uvicorn
 jinja2
 python-multipart  # FastAPI form parsing (verdict-override form)
 
-# MVP (Phases 7-11): live polling. Uncomment when you get there.
-# apscheduler
+apscheduler  # Phase 12: background Wazuh polling
