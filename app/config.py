@@ -8,10 +8,14 @@ class Settings(BaseSettings):
     anthropic_api_key: str = "sk-ant-placeholder"
     anthropic_model: str = "claude-haiku-4-5-20251001"
 
-    wazuh_api_url: str = "https://localhost:55000"
-    wazuh_api_user: str = "wazuh"
-    wazuh_api_password: str = "wazuh"
+    # Wazuh indexer (alerts live in wazuh-alerts-*, not the Manager API)
+    wazuh_api_url: str = "https://localhost:9200"
+    wazuh_api_user: str = "zuumb-ingest"
+    wazuh_api_password: str = "changeme"
     wazuh_verify_ssl: bool = False
+    wazuh_alerts_index: str = "wazuh-alerts-*"
+    wazuh_live_polling: bool = False  # start the background poller on app startup
+    wazuh_poll_seconds: int = 60
 
     database_url: str = "sqlite:///./zuumb.db"
 
