@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+{% block title %}Incidents{% endblock %}
+{% block breadcrumb %}<span class="here">Incidents</span>{% endblock %}
+{% block body %}
+<h1>Incidents ({{ incidents|length }})</h1>
+
+<div class="rangebar">
+  <span class="muted">time range:</span>
+  {% for key, label in [("", "All"), ("today", "Today"), ("7d", "Last 7 days"), ("30d", "Last 30 days")] %}
+  <a class="chip {{ 'on' if time_range == key or (not time_range and not key and not date_from and not date_to) }}"
+     href="{{ '/' if not key else '/?range=' + key }}">{{ label }}</a>
+  {% endfor %}
+  <form method="get" class="custom-range">
+    <input type="date" name="from" value="{{ date_from or '' }}">
+    <input type="date" name="to" value="{{ date_to or '' }}">
+    <button type="submit">Apply</button>
+  </form>
+</div>
+
+{% if filters %}
+<p class="filterbar">
+  filtered by
+  {% for k, v in filters.items() %}<code>{{ k }} = {{ v }}</code>{% endfor %}
+  <a href="{{ '/?range=' + time_range if time_range else '/' }}">clear</a>
+</p>
+{% endif %}
+
+<section class="kpis">
+  <div class="kpi"><div class="num">{{ stats.kpis.alerts }}</div><div class="lbl">Total alerts</div></div>
+  <div class="kpi"><div class="num">{{ stats.kpis.incidents }}</div><div class="lbl">Total incidents</div></div>
+  <div class="kpi high"><div class="num">{{ stats.kpis.high_incidents }}</div><div class="lbl">High-severity incidents</div></div>
+  <div class="kpi"><div class="num">{{ stats.kpis.hosts }}</div><div class="lbl">Hosts affected</div></div>
+</section>
+
+<section class="charts">
+  {% for cid, ctitle, statkey in [
+      ("c-severity", "Incidents by severity", "severity"),
+      ("c-verdicts", "Verdict distribution", "verdict_dist"),
+      ("c-srcip", "Top source IPs", "by_src_ip"),
+      ("c-host", "Top hosts", "by_host"),
+      ("c-rule", "Top rules", "by_rule"),
+      ("c-mitre", "Top MITRE techniques", "by_mitre")] %}
+  <div class="card">
+    <div class="card-head">
+      <span class="card-title">{{ ctitle }}</span>
+      <button class="card-menu" type="button" data-stat="{{ statkey }}"
+              title="Export panel data (CSV)" aria-label="Export panel data as CSV">⋯</button>
+    </div>
+    <div class="card-body"><canvas id="{{ cid }}"></canvas></div>
+  </div>
+  {% endfor %}
+
+  <div class="card wide-2">
+    <div class="card-head">
+      <span class="card-title">Alerts &amp; incidents over time <span class="muted">(scroll to zoom)</span></span>
+      <span class="card-tools">
+        <button class="link-btn zoom-reset" type="button" data-chart="c-timeline">reset zoom</button>
+        <button class="card-menu" type="button" data-stat="timeline"
+                title="Export panel data (CSV)" aria-label="Export panel data as CSV">⋯</button>
+      </span>
+    </div>
+    <div class="card-body"><canvas id="c-timeline"></canvas></div>
+  </div>
+
+  <div class="card wide">
+    <div class="card-head">
+      <span class="card-title">Alert activity by hour &amp; weekday <span class="muted">(click a cell to filter)</span></span>
+      <button class="card-menu" type="button" data-stat="heatmap"
+              title="Export panel data (CSV)" aria-label="Export panel data as CSV">⋯</button>
+    </div>
+    <div class="card-body">
+      <div class="heatmap" style="grid-template-columns: 34px repeat(24, 1fr);">
+        <span class="hm-corner"></span>
+        {% for h in range(24) %}<span class="hm-hour">{{ '%02d'|format(h) }}</span>{% endfor %}
+        {% set peak = stats.heatmap.max %}
+        {% for row in stats.heatmap.matrix %}
+        {% set day = stats.heatmap.days[loop.index0] %}
+        {% set dow = loop.index0 %}
+        <span class="hm-day">{{ day }}</span>
+        {% for count in row %}
+        {% set pct = (8 + count * 92 // peak) if (peak and count) else 0 %}
+        <a class="hm-cell" title="{{ day }} {{ '%02d'|format(loop.index0) }}:00 — {{ count }} alert(s)"
+           href="{{ request.url.include_query_params(dow=dow, hour=loop.index0) }}"
+           style="background: color-mix(in srgb, var(--accent) {{ pct }}%, transparent);"></a>
+        {% endfor %}
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</section>
+
+{% if incidents %}
+<table>
+  <thead>
+    <tr>
+      <th>ID</th><th>Title</th><th>Severity</th><th>Status</th><th>Alerts</th>
+      <th><a class="sortlink" href="{{ request.url.include_query_params(sort='created', dir='asc' if sort_dir == 'desc' else 'desc') }}">Created {{ '▲' if sort_dir == 'asc' else '▼' }}</a></th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for inc in incidents %}
+    <tr>
+      <td><a href="/incidents/{{ inc.id }}">{{ inc.id }}</a></td>
+      <td><a href="/incidents/{{ inc.id }}">{{ inc.title }}</a></td>
+      <td class="sev-{{ inc.severity }}">{{ inc.severity }}</td>
+      <td>{{ inc.status }}</td>
+      <td>{{ counts.get(inc.id, 0) }}</td>
+      <td class="muted">{{ inc.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="muted">No incidents match the current filters.</p>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>window.STATS = {{ stats | tojson }};</script>
+<script src="/static/chart.umd.min.js"></script>
+<script src="/static/chartjs-plugin-zoom.min.js"></script>
+<script src="/static/charts.js"></script>
+{% endblock %}

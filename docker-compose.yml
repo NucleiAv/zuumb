@@ -1,0 +1,26 @@
+# AI-SOC-XDR local infra.
+#
+# Wazuh is NOT defined here — this project expects an existing Wazuh single-node
+# stack (you have `single-node-*` v5.0.0-beta4 running via WSL Docker). If you
+# don't have one:  git clone https://github.com/wazuh/wazuh-docker
+#
+# POC uses SQLite (DATABASE_URL default), so this file is only needed for the
+# MVP once you switch DATABASE_URL to Postgres.
+#
+#   docker compose up -d postgres
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: aisoc
+      POSTGRES_PASSWORD: aisoc
+      POSTGRES_DB: aisoc
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+volumes:
+  postgres-data:

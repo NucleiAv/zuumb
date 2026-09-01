@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+{% block title %}Incident {{ incident.id }}{% endblock %}
+{% block breadcrumb %}<a href="/">Incidents</a><span class="sep">›</span><span class="here">#{{ incident.id }}</span>{% endblock %}
+{% block body %}
+<h1>{{ incident.title }}</h1>
+<p class="subtle">
+  severity <span id="incident-severity" class="sev-{{ incident.severity }}">{{ incident.severity }}</span> &middot;
+  status {{ incident.status }} &middot;
+  created {{ incident.created_at.strftime('%Y-%m-%d %H:%M') }}
+</p>
+<table>
+  <thead>
+    <tr>
+      <th>Time</th><th>Host</th><th>Rule</th><th>Description</th><th>Src IP</th><th>User</th>
+      <th>Verdict</th><th>Conf</th><th>MITRE</th><th>Reasoning</th><th>Analyst</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for a, v, o in rows %}
+    <tr data-href="/alerts/{{ a.id }}">
+      <td class="muted">{{ a.timestamp.strftime('%Y-%m-%d %H:%M') }}</td>
+      <td>{{ a.agent_name or '-' }}</td>
+      <td>{{ a.rule_id }}</td>
+      <td>{{ a.rule_description }}</td>
+      <td>{{ a.src_ip or '-' }}</td>
+      <td>{{ a.user or '-' }}</td>
+      {% if v %}
+      <td class="v-{{ v.verdict }}">{{ v.verdict }}</td>
+      <td>{{ '%.2f'|format(v.confidence) }}</td>
+      <td>{{ v.mitre_technique or '-' }}</td>
+      <td class="muted">{{ v.reasoning_text }}</td>
+      <td>
+        {% if o %}<div class="v-{{ o.analyst_verdict }}">{{ o.analyst_verdict }}</div>{% endif %}
+        <details class="override">
+          <summary>override</summary>
+          <form method="post" action="/verdicts/{{ v.id }}/override">
+            <select name="analyst_verdict">
+              <option value="benign">benign</option>
+              <option value="suspicious">suspicious</option>
+              <option value="malicious">malicious</option>
+            </select>
+            <input type="text" name="note" placeholder="why (optional)" maxlength="200">
+            <button type="submit">save</button>
+          </form>
+        </details>
+      </td>
+      {% else %}
+      <td class="muted" colspan="5">not triaged</td>
+      {% endif %}
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+
+<h2 class="section">Response tasks</h2>
+<p class="subtle">Proposed playbook actions. Approving marks a task done — it does <strong>not</strong> execute anything.</p>
+{% if tasks %}
+<table>
+  <thead>
+    <tr><th>Type</th><th>Action</th><th>Priority</th><th>Status</th><th></th></tr>
+  </thead>
+  <tbody>
+  {% for t in tasks %}
+    <tr>
+      <td>{{ t.type }}</td>
+      <td>{{ t.title }}</td>
+      <td class="sev-{{ t.priority }}">{{ t.priority }}</td>
+      <td>{{ t.status }}</td>
+      <td>
+        {% if t.status != 'done' %}
+        <form method="post" action="/tasks/{{ t.id }}/approve" style="margin:0">
+          <button class="btn-approve" type="submit">Approve</button>
+        </form>
+        {% else %}<span class="muted">✓ done</span>{% endif %}
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="muted">No playbook matched this incident's techniques.</p>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // Verdict override: submit in place, update the Analyst cell + incident severity, no reload.
+  document.querySelectorAll('.override form').forEach(function (form) {
+    form.addEventListener('submit', function (e) {
+      e.preventDefault();
+      var cell = form.closest('td');
+      var details = form.closest('details');
+      fetch(form.action, { method: 'POST', body: new FormData(form), headers: { Accept: 'application/json' } })
+        .then(function (r) { return r.ok ? r.json() : Promise.reject(r.status); })
+        .then(function (d) {
+          var tag = cell.querySelector('div[class^="v-"]') || cell.insertBefore(document.createElement('div'), details);
+          tag.className = 'v-' + d.analyst_verdict;
+          tag.textContent = d.analyst_verdict;
+          if (d.severity) {
+            var sev = document.getElementById('incident-severity');
+            sev.className = 'sev-' + d.severity;
+            sev.textContent = d.severity;
+          }
+          details.open = false;
+        })
+        .catch(function () { form.submit(); });  // fall back to a normal POST on any failure
+    });
+  });
+</script>
+{% endblock %}

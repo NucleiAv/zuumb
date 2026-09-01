@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}Attack chains{% endblock %}
+{% block breadcrumb %}<span class="here">Attack chains</span>{% endblock %}
+{% block body %}
+<h1>Attack chains ({{ rows|length }})</h1>
+<p class="subtle">incidents linked by a shared entity, ordered by MITRE ATT&amp;CK tactic</p>
+
+{% if rows %}
+<table>
+  <thead>
+    <tr><th>ID</th><th>Narrative</th><th>Stages</th><th>Severity</th><th>Alerts</th><th>Status</th><th>Created</th></tr>
+  </thead>
+  <tbody>
+  {% for r in rows %}
+    <tr>
+      <td><a href="/chains/{{ r.chain.id }}">{{ r.chain.id }}</a></td>
+      <td><a href="/chains/{{ r.chain.id }}">{{ r.chain.title }}</a></td>
+      <td>{{ r.stages }}</td>
+      <td class="sev-{{ r.severity }}">{{ r.severity }}</td>
+      <td>{{ r.alerts }}</td>
+      <td>{{ r.chain.status }}</td>
+      <td class="muted">{{ r.chain.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="muted">No attack chains. They form when two or more medium/high-severity incidents share a host, IP or user.</p>
+{% endif %}
+{% endblock %}

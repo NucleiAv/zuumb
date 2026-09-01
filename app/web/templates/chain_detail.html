@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}Attack chain {{ chain.id }}{% endblock %}
+{% block breadcrumb %}<a href="/chains">Attack chains</a><span class="sep">›</span><span class="here">#{{ chain.id }}</span>{% endblock %}
+{% block body %}
+<h1>{{ chain.title }}</h1>
+<p class="subtle">
+  severity <span class="sev-{{ severity }}">{{ severity }}</span> &middot;
+  <span class="muted">created {{ chain.created_at.strftime('%Y-%m-%d %H:%M') }}</span> &middot;
+  status
+  <form method="post" action="/chains/{{ chain.id }}/status" class="inline-status">
+    <select name="status" onchange="this.form.submit()">
+      {% for s in ["open", "investigating", "contained", "closed"] %}
+      <option value="{{ s }}" {{ 'selected' if chain.status == s }}>{{ s }}</option>
+      {% endfor %}
+    </select>
+    <noscript><button type="submit">set</button></noscript>
+  </form>
+</p>
+
+<!-- item 3: MITRE kill-chain tactic coverage -->
+<div class="killchain">
+  {% for t in kill_chain %}
+  <span class="kc-tactic {{ 'on' if t.present }}" title="{{ t.name }}">{{ t.name }}</span>
+  {% endfor %}
+</div>
+
+<!-- visual chain timeline -->
+<div class="chain-timeline {{ 'few' if stages|length <= 2 }}">
+  {% for st in stages %}
+  <div class="stage-node sev-border-{{ st.incident.severity }}">
+    <div class="stage-order">stage {{ st.order }}</div>
+    <div class="stage-tactic">{{ st.tactic }}</div>
+    <a href="/incidents/{{ st.incident.id }}">{{ st.incident.title }}</a>
+    {% if st.shared_with_earlier %}
+    <div class="stage-link" title="what makes this a chain, not a coincidence">
+      &#8618; shares {{ st.shared_with_earlier | join(', ') }}
+    </div>
+    {% endif %}
+  </div>
+  {% if not loop.last %}<div class="stage-arrow">&rarr;</div>{% endif %}
+  {% endfor %}
+</div>
+
+<h2 class="section">Stages</h2>
+<table>
+  <thead>
+    <tr><th>Stage</th><th>Tactic</th><th>Incident</th><th>Severity</th><th>Alerts</th><th>Chain link</th></tr>
+  </thead>
+  <tbody>
+  {% for st in stages %}
+    <tr>
+      <td>{{ st.order }}</td>
+      <td>{{ st.tactic }}</td>
+      <td><a href="/incidents/{{ st.incident.id }}">{{ st.incident.title }}</a></td>
+      <td class="sev-{{ st.incident.severity }}">{{ st.incident.severity }}</td>
+      <td>{{ st.alert_count }}</td>
+      <td class="muted">{{ st.shared_with_earlier | join(', ') if st.shared_with_earlier else '—' }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endblock %}
