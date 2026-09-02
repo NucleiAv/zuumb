@@ -66,7 +66,8 @@ def correlate(session: Session | None = None, window_minutes: int | None = None)
     ponytail: derived-state rebuild — wipes incidents/incident_alerts each run, so
     any analyst status/closed_at is lost. Fine for the batch POC; switch to
     incremental alert->incident assignment when Phase 9's feedback loop needs a
-    stable incident identity.
+    stable incident identity. created_at is pinned to the earliest alert so it
+    stays meaningful (and stable) across rebuilds, not "when correlate last ran".
     """
     init_db()
     own = session is None
@@ -82,7 +83,8 @@ def correlate(session: Session | None = None, window_minutes: int | None = None)
 
         incidents: list[Incident] = []
         for group in group_alerts(alerts, window):
-            inc = Incident(title=_title(group), severity=incident_severity(group, verdicts))
+            inc = Incident(title=_title(group), severity=incident_severity(group, verdicts),
+                           created_at=min(a.timestamp for a in group))
             session.add(inc)
             session.commit()
             session.refresh(inc)

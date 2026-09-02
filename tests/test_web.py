@@ -360,7 +360,8 @@ def test_severity_and_verdict_donut_filters():
     susp = client.get("/?verdict=suspicious").text
     assert ">web-01<" in susp and ">db-01<" in susp           # verdict-donut slice click
     assert client.get("/?verdict=malicious").text.count("/incidents/") == 0
-    assert 'href="/#c-host"' in client.get("/").text          # Hosts KPI clears other filters
+    home = client.get("/").text
+    assert home.count('class="kpi') == 5 and home.count('<a class="kpi" href="/">') == 3  # 3 KPIs clear filters
 
 
 
