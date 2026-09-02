@@ -25,5 +25,13 @@ assets/logo-originals/
 .vscode/
 .idea/
 
+# internal planning notes — not for the public repo
+CLAUDE.md
+zuumb-buildplan.md
+zuumb-buildplan-2.md
+
 # db snapshots / backups
 *.bak
+
+# stray scratch dumps
+scratch_*

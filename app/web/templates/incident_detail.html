@@ -6,7 +6,7 @@
 <p class="subtle">
   severity <span id="incident-severity" class="sev-{{ incident.severity }}">{{ incident.severity }}</span> &middot;
   status {{ incident.status }} &middot;
-  created {{ incident.created_at.strftime('%Y-%m-%d %H:%M') }}
+  created <time datetime="{{ incident.created_at|isoz }}">{{ incident.created_at|isoz }}</time>
 </p>
 <table>
   <thead>
@@ -18,7 +18,7 @@
   <tbody>
   {% for a, v, o in rows %}
     <tr data-href="/alerts/{{ a.id }}">
-      <td class="muted">{{ a.timestamp.strftime('%Y-%m-%d %H:%M') }}</td>
+      <td class="muted"><time datetime="{{ a.timestamp|isoz }}">{{ a.timestamp|isoz }}</time></td>
       <td>{{ a.agent_name or '-' }}</td>
       <td>{{ a.rule_id }}</td>
       <td>{{ a.rule_description }}</td>

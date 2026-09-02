@@ -61,3 +61,16 @@ def test_correlate_severity_from_worst_alert():
     incidents = correlate(window_minutes=30)
     # with no verdicts stored, every incident defaults to low
     assert {i.severity for i in incidents} == {"low"}
+
+
+def test_incident_created_at_is_earliest_alert_not_rebuild_time():
+    init_db()
+    ingest("data/synthetic_alerts/batch01.jsonl")
+    correlate(window_minutes=30)
+    with get_session() as s:
+        for inc in s.exec(select(Incident)).all():
+            aids = [x.alert_id for x in
+                    s.exec(select(IncidentAlert).where(IncidentAlert.incident_id == inc.id)).all()]
+            earliest = min(a.timestamp for a in
+                           s.exec(select(Alert).where(Alert.id.in_(aids))).all())
+            assert inc.created_at == earliest  # stable across reruns, reflects when it started

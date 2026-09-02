@@ -5,7 +5,7 @@
 <h1>{{ chain.title }}</h1>
 <p class="subtle">
   severity <span class="sev-{{ severity }}">{{ severity }}</span> &middot;
-  <span class="muted">created {{ chain.created_at.strftime('%Y-%m-%d %H:%M') }}</span> &middot;
+  <span class="muted">created <time datetime="{{ chain.created_at|isoz }}">{{ chain.created_at|isoz }}</time></span> &middot;
   status
   <form method="post" action="/chains/{{ chain.id }}/status" class="inline-status">
     <select name="status" onchange="this.form.submit()">

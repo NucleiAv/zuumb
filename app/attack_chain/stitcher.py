@@ -145,7 +145,8 @@ def stitch(session: Session | None = None) -> list[AttackChain]:
             first = stage_label(inc_alerts[ordered[0].id], technique)   # stage 0's tactic
             last = stage_label(inc_alerts[ordered[-1].id], technique)   # last stage's tactic
             status = prior_status.get(frozenset(i.id for i in ordered), "open")
-            chain = AttackChain(title=f"{len(ordered)} stages: {first} -> {last}", status=status)
+            chain = AttackChain(title=f"{len(ordered)} stages: {first} -> {last}", status=status,
+                                created_at=min(i.created_at for i in ordered))  # earliest stage, stable
             session.add(chain)
             session.commit()
             session.refresh(chain)

@@ -169,7 +169,9 @@
     color: var(--muted); font-size: 1.1rem; }
 
   .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: .5rem; margin-bottom: .5rem; }
-  .kpi { border: 1px solid var(--border); border-radius: 4px; background: var(--card); padding: .6rem .8rem; }
+  .kpi { display: block; border: 1px solid var(--border); border-radius: 4px; background: var(--card); padding: .6rem .8rem; }
+  a.kpi { color: inherit; text-decoration: none; transition: border-color .15s; }
+  a.kpi:hover { border-color: var(--accent); }
   .kpi .num { font-size: 1.6rem; font-weight: 700; line-height: 1.15; }
   .kpi .lbl { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
   .kpi.high .num { color: var(--sev-high); }
@@ -311,6 +313,46 @@
     if (e.metaKey || e.ctrlKey) window.open(tr.dataset.href, '_blank');
     else window.location.href = tr.dataset.href;
   });
+
+  // timestamps arrive as ISO-8601 UTC (<time datetime>); show each in the viewer's local zone
+  (function () {
+    var opt = { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' };
+    document.querySelectorAll('time[datetime]').forEach(function (el) {
+      var d = new Date(el.getAttribute('datetime'));
+      if (!isNaN(d)) el.textContent = d.toLocaleString([], opt);
+    });
+  })();
+
+  // time-range control: turn the viewer's LOCAL range into explicit UTC instants for the
+  // backend (which has no timezone of its own), plus tzmin so it can bucket local too.
+  (function () {
+    var bar = document.querySelector('[data-rangebar]');
+    if (!bar) return;
+    var tzmin = new Date().getTimezoneOffset();
+    function go(q) { q.set('tzmin', tzmin); location.href = '/?' + q.toString(); }
+    bar.querySelectorAll('a.chip[data-range]').forEach(function (a) {
+      a.addEventListener('click', function (e) {
+        e.preventDefault();
+        var key = a.dataset.range;
+        if (!key) { location.href = '/'; return; }              // "All"
+        var start = new Date(); start.setHours(0, 0, 0, 0);      // local midnight today
+        if (key === '7d') start.setDate(start.getDate() - 6);
+        else if (key === '30d') start.setDate(start.getDate() - 29);
+        var q = new URLSearchParams({ range: key, from: start.toISOString(), to: new Date().toISOString() });
+        go(q);
+      });
+    });
+    var form = bar.querySelector('.custom-range');
+    if (form) form.addEventListener('submit', function (e) {
+      e.preventDefault();
+      var fd = form.querySelector('[name=fromd]').value, td = form.querySelector('[name=tod]').value;
+      if (!fd && !td) { location.href = '/'; return; }
+      var q = new URLSearchParams();
+      if (fd) { q.set('fromd', fd); q.set('from', new Date(fd + 'T00:00:00').toISOString()); }
+      if (td) { q.set('tod', td); q.set('to', new Date(td + 'T23:59:59.999').toISOString()); }
+      go(q);
+    });
+  })();
 </script>
 {% block scripts %}{% endblock %}
 </body>
