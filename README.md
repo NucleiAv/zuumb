@@ -156,6 +156,23 @@ fill in progressively — watch http://localhost:8000.
 
 Postgres (optional, replaces SQLite): `docker compose up -d postgres`, then set `DATABASE_URL` in `.env`.
 
+## Tuning attack chains on real traffic
+
+Let live data accumulate for a few days, then check chain quality:
+
+```bash
+python -m scripts.chain_quality
+```
+
+It prints, per chain, the entities that join each pair of adjacent stages. A
+chain flagged `!!` is linked by **one shared host across every stage** — often a
+proxy or jump box, not a real attack. Knobs (both `.env`-overridable):
+
+| var | default | when to change |
+|-----|---------|----------------|
+| `CORRELATION_WINDOW_MINUTES` | `30` | shrink if noisy traffic over-merges unrelated alerts into one incident |
+| `CHAIN_MAX_ENTITY_SPREAD` | `4` | lower if a busy shared host keeps stitching unrelated incidents together |
+
 ## Build status
 - **Phase 1** scaffold + infra — done (Wazuh external; infra is Postgres-only).
 - **Phase 2** ingestion (synthetic alert JSON → DB) — done.
@@ -170,3 +187,4 @@ Postgres (optional, replaces SQLite): `docker compose up -d postgres`, then set 
 - **Phase 9** feedback loop (`app/feedback/logger.py`, analyst override → few-shot in triage prompt) — done.
 - **Phase 10** eval harness (`eval/run_eval.py`, 34-alert labeled set) — done; baseline acc 0.82, +few-shot 0.94 ([eval/RESULTS.md](eval/RESULTS.md)).
 - **Phase 12** live Wazuh ingestion (`app/ingestion/wazuh_client.py` poller + `app/pipeline.py`) — done against a live 4.9.2 stack.
+- **Phase 13** attack chains at scale — `CHAIN_MAX_ENTITY_SPREAD` knob + `scripts/chain_quality.py` diagnostic; validation ongoing against real traffic.

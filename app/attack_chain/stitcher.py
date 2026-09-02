@@ -10,6 +10,7 @@ from collections import Counter, defaultdict
 
 from sqlmodel import Session, delete, select
 
+from app.config import settings
 from app.correlation.engine import entities
 from app.db.models import Alert, AttackChain, AttackChainIncident, Incident, IncidentAlert, Verdict
 from app.db.session import get_session, init_db
@@ -22,7 +23,6 @@ TACTIC_ORDER = [
     "Exfiltration", "Impact",
 ]
 _UNKNOWN_RANK = len(TACTIC_ORDER)
-_MAX_ENTITY_SPREAD = 4  # backstop: an entity in more incidents than this is noise, not a link
 
 # Fallback when an alert carries a technique id but no tactic name.
 _TECHNIQUE_TACTIC = {
@@ -125,7 +125,7 @@ def stitch(session: Session | None = None) -> list[AttackChain]:
 
         # backstop: still drop an entity that somehow spans many incidents
         seen = Counter(e for es in ent.values() for e in es)
-        common = {e for e, n in seen.items() if n > _MAX_ENTITY_SPREAD}
+        common = {e for e, n in seen.items() if n > settings.chain_max_entity_spread}
         ent = {i: es - common for i, es in ent.items()}
 
         prior_members: dict[int, set] = defaultdict(set)
@@ -157,6 +157,42 @@ def stitch(session: Session | None = None) -> list[AttackChain]:
             session.commit()
             chains.append(chain)
         return chains
+    finally:
+        if own:
+            session.close()
+
+
+def chain_quality(session: Session | None = None) -> list[dict]:
+    """Phase 13 diagnostic. For each persisted chain, the entities that actually
+    join each pair of adjacent stages, and a flag when a chain hangs on a single
+    shared host across every link — the proxy/jump-box false-chain risk."""
+    init_db()
+    own = session is None
+    session = session or get_session()
+    try:
+        alerts = {a.id: a for a in session.exec(select(Alert)).all()}
+        verdict = {v.alert_id: v.verdict for v in session.exec(select(Verdict)).all()}
+        inc_alerts: dict[int, list[Alert]] = defaultdict(list)
+        for link in session.exec(select(IncidentAlert)).all():
+            inc_alerts[link.incident_id].append(alerts[link.alert_id])
+
+        def sig_ents(inc_id: int) -> set[str]:
+            return set().union(*(entities(a) for a in _signal_alerts(inc_alerts[inc_id], verdict)), set())
+
+        stages: dict[int, list[int]] = defaultdict(list)
+        for link in session.exec(
+            select(AttackChainIncident).order_by(AttackChainIncident.stage_order)
+        ).all():
+            stages[link.attack_chain_id].append(link.incident_id)
+
+        out = []
+        for c in session.exec(select(AttackChain).order_by(AttackChain.id)).all():
+            ids = stages[c.id]
+            links = [sorted(sig_ents(a) & sig_ents(b)) for a, b in zip(ids, ids[1:])]
+            hub = bool(links) and all(len(s) == 1 and s[0].startswith("host:") for s in links)
+            out.append({"chain_id": c.id, "title": c.title, "stages": len(ids),
+                        "links": links, "flag": "hub-host" if hub else "ok"})
+        return out
     finally:
         if own:
             session.close()

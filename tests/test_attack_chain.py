@@ -1,7 +1,7 @@
 from collections import defaultdict
 from datetime import datetime
 
-from sqlmodel import select
+from sqlmodel import delete, select
 
 from app.attack_chain.stitcher import _group_by_shared_entity, stitch, tactic_rank
 from app.correlation.engine import correlate
@@ -71,6 +71,44 @@ def test_stitch_is_idempotent():
     _ingest_triage_correlate()
     n = len(stitch())
     assert n and len(stitch()) == n
+
+
+def _seed_chain_pair(a_ent, b_ent):
+    """Two attack incidents A (recon) -> B (execution). a_ent/b_ent are (host, srcip)."""
+    import json as _json
+    from app.db.models import Verdict
+    raw = lambda tac: _json.dumps({"rule": {"groups": ["attack"], "mitre": {"tactic": [tac]}}})
+    with get_session() as s:
+        rows = [
+            ("A", *a_ent, "Reconnaissance"),
+            ("B", *b_ent, "Execution"),
+        ]
+        for tag, host, ip, tac in rows:
+            al = Alert(wazuh_alert_id=tag, timestamp=datetime(2026, 8, 28, 14, 0), rule_id="1",
+                       rule_description="d", agent_name=host, src_ip=ip, raw_json=raw(tac))
+            s.add(al); s.commit(); s.refresh(al)
+            s.add(Verdict(alert_id=al.id, verdict="malicious", confidence=0.9,
+                          reasoning_text="x", model_version="t"))
+            inc = Incident(title=tag, severity="high")
+            s.add(inc); s.commit(); s.refresh(inc)
+            s.add(IncidentAlert(incident_id=inc.id, alert_id=al.id)); s.commit()
+
+
+def test_chain_quality_flags_hub_host_and_clears_ip_linked():
+    from app.attack_chain.stitcher import chain_quality
+    _seed_chain_pair(("jump-01", "203.0.113.5"), ("jump-01", "203.0.113.9"))  # only host shared
+    assert stitch()
+    q = chain_quality()
+    assert len(q) == 1 and q[0]["flag"] == "hub-host"
+    assert q[0]["links"] == [["host:jump-01"]]
+
+    with get_session() as s:  # fresh: a chain linked by a real shared IP
+        for m in (Alert, Incident, IncidentAlert, AttackChain, AttackChainIncident):
+            s.exec(delete(m))
+        s.commit()
+    _seed_chain_pair(("web-a", "198.51.100.7"), ("web-b", "198.51.100.7"))  # shared srcip
+    stitch()
+    assert chain_quality()[0]["flag"] == "ok"
 
 
 def test_chain_title_reflects_first_and_last_stage_tactic():
