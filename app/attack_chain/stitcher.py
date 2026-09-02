@@ -189,9 +189,14 @@ def chain_quality(session: Session | None = None) -> list[dict]:
         for c in session.exec(select(AttackChain).order_by(AttackChain.id)).all():
             ids = stages[c.id]
             links = [sorted(sig_ents(a) & sig_ents(b)) for a, b in zip(ids, ids[1:])]
-            hub = bool(links) and all(len(s) == 1 and s[0].startswith("host:") for s in links)
+            if links and any(not s for s in links):
+                flag = "weak-link"   # adjacent stages share no entity directly (transitive only)
+            elif links and all(len(s) == 1 and s[0].startswith("host:") for s in links):
+                flag = "hub-host"    # every link is one shared host — likely a jump box
+            else:
+                flag = "ok"
             out.append({"chain_id": c.id, "title": c.title, "stages": len(ids),
-                        "links": links, "flag": "hub-host" if hub else "ok"})
+                        "links": links, "flag": flag})
         return out
     finally:
         if own:

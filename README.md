@@ -156,6 +156,31 @@ fill in progressively — watch http://localhost:8000.
 
 Postgres (optional, replaces SQLite): `docker compose up -d postgres`, then set `DATABASE_URL` in `.env`.
 
+## More agents (multi-host lab)
+
+Attack chains only form across more than one source, so run extra agents as
+containers. There's no `wazuh/wazuh-agent` image for 4.9.x, so `docker/agent/`
+builds one from the official `.deb`.
+
+```bash
+docker compose -f docker-compose.agents.yml up -d --build
+```
+
+Two agents (`agent-lab-01`, `agent-lab-02`) join the running manager's network,
+enrol automatically, and `restart: unless-stopped` — they come back on Docker /
+laptop restart until you `docker compose -f docker-compose.agents.yml down`.
+
+`LAB_NOISE=1` (set in the compose file) seeds realistic sshd auth-failure traffic
+with rotating source IPs so the pipeline isn't starved while genuine traffic
+builds. **Drop `LAB_NOISE` when pointing agents at real hosts** — a real
+deployment monitors real activity, it doesn't manufacture it.
+
+Daily bring-up after a full shutdown (everything else auto-restarts):
+
+```bash
+wsl bash scripts/lab-up.sh     # Wazuh stack -> agents -> then start the poller
+```
+
 ## Tuning attack chains on real traffic
 
 Let live data accumulate for a few days, then check chain quality:

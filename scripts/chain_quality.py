@@ -19,10 +19,11 @@ def main() -> None:
         mark = "!!" if r["flag"] != "ok" else "  "
         print(f"{mark} chain {r['chain_id']}  {r['stages']} stages  {r['title']}")
         for n, shared in enumerate(r["links"]):
-            print(f"     stage {n} -> {n + 1}: {', '.join(shared) or '(nothing shared — suspect)'}")
+            print(f"     stage {n} -> {n + 1}: {', '.join(shared) or '(no direct overlap)'}")
         flagged += r["flag"] != "ok"
-    print(f"\n{len(rows)} chain(s); {flagged} flagged as possibly hub-linked "
-          "(one shared host across every stage - verify it's a real chain, not a jump box)")
+    print(f"\n{len(rows)} chain(s); {flagged} flagged "
+          "(hub-host = one shared host across every stage; weak-link = adjacent "
+          "stages share nothing directly). Verify these are real chains.")
 
 
 if __name__ == "__main__":

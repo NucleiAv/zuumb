@@ -1,0 +1,32 @@
+# Extra Wazuh 4.9.2 agents as containers — one per monitored "host" — so attack
+# chains can form across more than one source. Joins the running manager's
+# network (the single-node stack under COMPOSE_PROJECT_NAME=wazuh49).
+#
+#   docker compose -f docker-compose.agents.yml up -d --build
+#
+# restart: unless-stopped -> the agents come back on Docker/laptop restart until
+# you explicitly `docker compose ... down`. LAB_NOISE=1 seeds realistic sshd
+# auth traffic; drop it when monitoring real hosts.
+name: zuumb-agents
+
+x-agent: &agent
+  build: ./docker/agent
+  image: zuumb/wazuh-agent:4.9.2
+  restart: unless-stopped
+  environment:
+    WAZUH_MANAGER: wazuh.manager
+    LAB_NOISE: "1"
+  networks: [wazuh]
+
+services:
+  agent-lab-01:
+    <<: *agent
+    hostname: agent-lab-01
+  agent-lab-02:
+    <<: *agent
+    hostname: agent-lab-02
+
+networks:
+  wazuh:
+    name: wazuh49_default
+    external: true
