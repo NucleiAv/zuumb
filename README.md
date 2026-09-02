@@ -222,6 +222,22 @@ sudo /var/ossec/bin/wazuh-control status
 `authd` on port 1515. Windows/macOS use the platform installer from
 <https://packages.wazuh.com/4.x/> with the same `WAZUH_MANAGER` / `WAZUH_AGENT_NAME`.
 
+### How many agents are running
+
+```bash
+# canonical count — active / disconnected / never_connected / total (excludes the manager itself)
+TOKEN=$(curl -sk -u wazuh-wui:'MyS3cr37P450r.*-' -X POST \
+  "https://localhost:55000/security/user/authenticate?raw=true")
+curl -sk -H "Authorization: Bearer $TOKEN" "https://localhost:55000/agents/summary/status"
+# -> {"data":{"connection":{"active":3,"disconnected":0,"never_connected":0,"pending":0,"total":3}, ...}}
+
+# quick check without the API token (counts id 000, the manager, too — subtract 1)
+docker exec wazuh49-wazuh.manager-1 /var/ossec/bin/agent_control -l | grep -c Active
+
+# just the container agents
+docker compose -f docker-compose.agents.yml ps
+```
+
 ### Verify an agent
 
 ```bash
