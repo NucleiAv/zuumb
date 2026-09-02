@@ -117,12 +117,16 @@
     var start = floor(first), end = floor(last), buckets = [], t;
     for (t = start; t <= end; t += step) buckets.push(t);
     var pos = {}; buckets.forEach(function (b, i) { pos[b] = i; });
+    // events are sorted ascending, so an incident's first appearance is its start.
+    // "incidents" per bucket = incidents that STARTED then (all severities), so the
+    // series sums to the total incident count.
     var alerts = buckets.map(function () { return 0; });
-    var incs = buckets.map(function () { return {}; });
+    var started = buckets.map(function () { return 0; });
+    var seen = {};
     events.forEach(function (e) {
       var i = pos[floor(e[0])];
       alerts[i]++;
-      if (e[1]) incs[i][e[1]] = 1;
+      if (e[1] && !seen[e[1]]) { seen[e[1]] = 1; started[i]++; }
     });
     var fmt = fine
       ? { hour: '2-digit', minute: '2-digit' }
@@ -130,7 +134,7 @@
     return {
       labels: buckets.map(function (ms) { return new Date(ms).toLocaleString([], fmt); }),
       alerts: alerts,
-      incidents: incs.map(function (s) { return Object.keys(s).length; }),
+      incidents: started,
     };
   }
 
@@ -199,7 +203,8 @@
         labels: tl.labels,
         datasets: [
           { label: 'alerts', data: tl.alerts, borderColor: p.accent, backgroundColor: p.accent, tension: 0.3 },
-          { label: 'incidents', data: tl.incidents, borderColor: p.sev.high, backgroundColor: p.sev.high, tension: 0.3, yAxisID: 'y1' },
+          // violet, not the severity red — this counts ALL incidents, not just high
+          { label: 'incidents', data: tl.incidents, borderColor: '#8b5cf6', backgroundColor: '#8b5cf6', tension: 0.3, yAxisID: 'y1' },
         ],
       },
       options: tlOpts,
