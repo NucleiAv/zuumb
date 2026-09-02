@@ -156,29 +156,106 @@ fill in progressively — watch http://localhost:8000.
 
 Postgres (optional, replaces SQLite): `docker compose up -d postgres`, then set `DATABASE_URL` in `.env`.
 
-## More agents (multi-host lab)
+## Adding Wazuh agents
 
-Attack chains only form across more than one source, so run extra agents as
-containers. There's no `wazuh/wazuh-agent` image for 4.9.x, so `docker/agent/`
-builds one from the official `.deb`.
+Attack chains only form when activity spans more than one source, so zuumb wants
+several agents reporting. Two ways to add them.
+
+### A. Container agents (the multi-host lab)
+
+There's no `wazuh/wazuh-agent` image for 4.9.x (Docker Hub starts at 4.13), so
+`docker/agent/` builds one from the official `.deb`. `docker-compose.agents.yml`
+runs two of them.
 
 ```bash
+# the Wazuh stack must be up first (it owns the network the agents join)
 docker compose -f docker-compose.agents.yml up -d --build
 ```
 
-Two agents (`agent-lab-01`, `agent-lab-02`) join the running manager's network,
-enrol automatically, and `restart: unless-stopped` — they come back on Docker /
-laptop restart until you `docker compose -f docker-compose.agents.yml down`.
+- `agent-lab-01`, `agent-lab-02` join the manager's `wazuh49_default` network and
+  enrol automatically on first start.
+- `restart: unless-stopped` — they come back on every Docker / laptop restart
+  until you explicitly `docker compose -f docker-compose.agents.yml down`.
+- `LAB_NOISE=1` (in the compose file) seeds realistic sshd auth-failure traffic
+  with rotating source IPs so the pipeline has data while real traffic builds.
+  **Remove `LAB_NOISE` when the agents monitor real hosts** — a real deployment
+  watches real activity, it doesn't manufacture it.
 
-`LAB_NOISE=1` (set in the compose file) seeds realistic sshd auth-failure traffic
-with rotating source IPs so the pipeline isn't starved while genuine traffic
-builds. **Drop `LAB_NOISE` when pointing agents at real hosts** — a real
-deployment monitors real activity, it doesn't manufacture it.
+**Add a third (Nth) agent** — copy a service block in `docker-compose.agents.yml`:
 
-Daily bring-up after a full shutdown (everything else auto-restarts):
+```yaml
+  agent-lab-03:
+    <<: *agent
+    hostname: agent-lab-03
+```
+
+then `docker compose -f docker-compose.agents.yml up -d --build`. The `hostname`
+becomes the agent name the manager registers.
+
+**Container agent commands**
 
 ```bash
-wsl bash scripts/lab-up.sh     # Wazuh stack -> agents -> then start the poller
+docker compose -f docker-compose.agents.yml ps            # status / health
+docker compose -f docker-compose.agents.yml logs -f agent-lab-01
+docker compose -f docker-compose.agents.yml restart agent-lab-02
+docker compose -f docker-compose.agents.yml down          # stop + remove all
+docker compose -f docker-compose.agents.yml build --no-cache   # rebuild the image (e.g. new .deb)
+```
+
+### B. A real host (bare-metal or VM)
+
+Run on the machine you want telemetry from. `WAZUH_MANAGER` is where the manager
+is reachable — `localhost` from the WSL box that runs the stack, otherwise the
+host's LAN IP.
+
+```bash
+curl -so /tmp/wazuh-agent.deb \
+  https://packages.wazuh.com/4.x/apt/pool/main/w/wazuh-agent/wazuh-agent_4.9.2-1_amd64.deb
+
+sudo WAZUH_MANAGER='localhost' WAZUH_AGENT_NAME='my-host' dpkg -i /tmp/wazuh-agent.deb
+sudo systemctl daemon-reload
+sudo systemctl enable --now wazuh-agent
+sudo /var/ossec/bin/wazuh-control status
+```
+
+`WAZUH_MANAGER` + the first service start auto-enrol against the manager's
+`authd` on port 1515. Windows/macOS use the platform installer from
+<https://packages.wazuh.com/4.x/> with the same `WAZUH_MANAGER` / `WAZUH_AGENT_NAME`.
+
+### Verify an agent
+
+```bash
+# manager's view — the agent should read Active, not "Never connected" / Disconnected
+docker exec wazuh49-wazuh.manager-1 /var/ossec/bin/agent_control -l
+
+# its alerts are reaching the indexer
+curl -sk -u admin:SecretPassword \
+  "https://localhost:9200/wazuh-alerts-*/_search?size=3&q=agent.name:agent-lab-01&sort=timestamp:desc"
+```
+
+If an agent is stuck "Never connected": it enrolled (has a key) but can't reach
+the manager on **1514/tcp** — check the address it's using
+(`grep '<address>' /var/ossec/etc/ossec.conf` in the agent) and that 1514 is
+published by the stack.
+
+### Remove an agent
+
+```bash
+docker compose -f docker-compose.agents.yml stop agent-lab-02   # container: stop it
+docker exec wazuh49-wazuh.manager-1 /var/ossec/bin/manage_agents -r 003   # then drop id 003
+```
+
+The stack's `authd` has `<purge>yes</purge>`, so a removed key is cleared from
+the manager automatically on the next restart.
+
+### Daily bring-up
+
+After a full shutdown (otherwise everything auto-restarts):
+
+```bash
+wsl bash scripts/lab-up.sh     # Wazuh stack -> wait for indexer -> agents -> prints agent list
+# then, in the repo:
+.venv/Scripts/python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
 ## Tuning attack chains on real traffic
@@ -212,4 +289,4 @@ proxy or jump box, not a real attack. Knobs (both `.env`-overridable):
 - **Phase 9** feedback loop (`app/feedback/logger.py`, analyst override → few-shot in triage prompt) — done.
 - **Phase 10** eval harness (`eval/run_eval.py`, 34-alert labeled set) — done; baseline acc 0.82, +few-shot 0.94 ([eval/RESULTS.md](eval/RESULTS.md)).
 - **Phase 12** live Wazuh ingestion (`app/ingestion/wazuh_client.py` poller + `app/pipeline.py`) — done against a live 4.9.2 stack.
-- **Phase 13** attack chains at scale — `CHAIN_MAX_ENTITY_SPREAD` knob + `scripts/chain_quality.py` diagnostic; validation ongoing against real traffic.
+- **Phase 13** attack chains at scale — `CHAIN_MAX_ENTITY_SPREAD` knob, `scripts/chain_quality.py` diagnostic, container agent lab (`docker/agent/`, `docker-compose.agents.yml`); validation ongoing against real traffic.
