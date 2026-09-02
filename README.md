@@ -156,6 +156,159 @@ fill in progressively — watch http://localhost:8000.
 
 Postgres (optional, replaces SQLite): `docker compose up -d postgres`, then set `DATABASE_URL` in `.env`.
 
+## Adding Wazuh agents
+
+Attack chains only form when activity spans more than one source, so zuumb wants
+several agents reporting. Two ways to add them.
+
+### A. Container agents (the multi-host lab)
+
+There's no `wazuh/wazuh-agent` image for 4.9.x (Docker Hub starts at 4.13), so
+`docker/agent/` builds one from the official `.deb`. `docker-compose.agents.yml`
+runs two of them.
+
+> Run every `docker compose -f docker-compose.agents.yml …` command **from the
+> repo root** (the file is `./docker-compose.agents.yml`). From WSL that's
+> `cd /mnt/<drive>/…/zuumb` first. Plain `docker …` commands (below) work from
+> anywhere.
+
+```bash
+# the Wazuh stack must be up first (it owns the network the agents join)
+docker compose -f docker-compose.agents.yml up -d --build
+```
+
+- `agent-lab-01`, `agent-lab-02` join the manager's `wazuh49_default` network and
+  enrol automatically on first start.
+- Each keeps its enrolment key in a volume (`agentNN-etc`). The manager rejects a
+  *duplicate agent name*, so an agent must enrol exactly once — the volume lets
+  `restart` / recreate reconnect instead of re-enrolling. To force a clean
+  re-enrol: `docker compose -f docker-compose.agents.yml down -v`.
+- `restart: unless-stopped` — they come back on every Docker / laptop restart
+  until you explicitly `docker compose -f docker-compose.agents.yml down`.
+- `LAB_NOISE=1` (in the compose file) seeds realistic sshd auth-failure traffic
+  with rotating source IPs so the pipeline has data while real traffic builds.
+  **Remove `LAB_NOISE` when the agents monitor real hosts** — a real deployment
+  watches real activity, it doesn't manufacture it.
+
+**Add a third (Nth) agent** — in `docker-compose.agents.yml`, copy a service
+block and add its volume:
+
+```yaml
+services:
+  agent-lab-03:
+    <<: *agent
+    hostname: agent-lab-03
+    volumes: ["agent03-etc:/var/ossec/etc"]
+volumes:
+  agent03-etc:
+```
+
+then `docker compose -f docker-compose.agents.yml up -d --build`. The `hostname`
+becomes the agent name the manager registers.
+
+**Container agent commands** — from the repo root:
+
+```bash
+docker compose -f docker-compose.agents.yml ps            # status / health
+docker compose -f docker-compose.agents.yml logs -f agent-lab-01
+docker compose -f docker-compose.agents.yml restart agent-lab-02
+docker compose -f docker-compose.agents.yml down          # stop + remove all
+docker compose -f docker-compose.agents.yml build --no-cache   # rebuild the image (e.g. new .deb)
+```
+
+…or from anywhere, by container name (`docker ps` to list them):
+
+```bash
+docker ps --filter name=zuumb-agents            # the agent containers + health
+docker restart zuumb-agents-agent-lab-02-1
+docker logs -f zuumb-agents-agent-lab-01-1
+```
+
+### B. A real host (bare-metal or VM)
+
+Same steps as **Live Wazuh → 3. Enrol an agent** above — run them on the other
+machine. Set `WAZUH_MANAGER` to `localhost` only if that machine runs the stack,
+otherwise to the manager host's LAN IP, and give each host a distinct
+`WAZUH_AGENT_NAME`. Windows/macOS use the platform installer from
+<https://packages.wazuh.com/4.x/> with the same two env vars.
+
+### How many agents are running
+
+```bash
+# canonical count — active / disconnected / never_connected / total (excludes the manager itself)
+TOKEN=$(curl -sk -u wazuh-wui:'MyS3cr37P450r.*-' -X POST \
+  "https://localhost:55000/security/user/authenticate?raw=true")
+curl -sk -H "Authorization: Bearer $TOKEN" "https://localhost:55000/agents/summary/status"
+# -> {"data":{"connection":{"active":3,"disconnected":0,"never_connected":0,"pending":0,"total":3}, ...}}
+
+# quick check without the API token (counts id 000, the manager, too — subtract 1)
+docker exec wazuh49-wazuh.manager-1 /var/ossec/bin/agent_control -l | grep -c Active
+
+# just the container agents (from the repo root)
+docker compose -f docker-compose.agents.yml ps
+```
+
+### Verify an agent
+
+```bash
+# manager's view — the agent should read Active, not "Never connected" / Disconnected
+docker exec wazuh49-wazuh.manager-1 /var/ossec/bin/agent_control -l
+
+# its alerts are reaching the indexer
+curl -sk -u admin:SecretPassword \
+  "https://localhost:9200/wazuh-alerts-*/_search?size=3&q=agent.name:agent-lab-01&sort=timestamp:desc"
+```
+
+If an agent is stuck "Never connected": it enrolled (has a key) but can't reach
+the manager on **1514/tcp** — check the address it's using
+(`grep '<address>' /var/ossec/etc/ossec.conf` in the agent) and that 1514 is
+published by the stack.
+
+If a container agent logs `Duplicate agent name … Unable to add agent`: its key
+volume is out of sync with the manager. `docker compose -f docker-compose.agents.yml
+down -v` then `up` to re-enrol from scratch.
+
+### Remove an agent
+
+```bash
+docker compose -f docker-compose.agents.yml stop agent-lab-02      # container: stop it
+docker exec wazuh49-wazuh.manager-1 /var/ossec/bin/manage_agents -r <id>   # id from agent_control -l
+```
+
+The stack's `authd` has `<purge>yes</purge>`, so a removed key is cleared from
+the manager automatically on the next restart.
+
+### Daily bring-up
+
+After a full shutdown (otherwise everything auto-restarts):
+
+```bash
+wsl bash scripts/lab-up.sh     # Wazuh stack -> wait for indexer -> agents -> prints agent list
+# then, in the repo:
+.venv/Scripts/python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
+```
+
+## Tuning attack chains on real traffic
+
+Let live data accumulate for a few days, then check chain quality:
+
+```bash
+python -m scripts.chain_quality
+```
+
+It prints, per chain, the entities that join each pair of adjacent stages, and
+flags two false-chain shapes:
+
+- **hub-host** — every link is one shared host (a proxy / jump box, not an attack path)
+- **weak-link** — adjacent stages share no entity directly (stitched only transitively)
+
+Knobs (both `.env`-overridable):
+
+| var | default | when to change |
+|-----|---------|----------------|
+| `CORRELATION_WINDOW_MINUTES` | `30` | shrink if noisy traffic over-merges unrelated alerts into one incident |
+| `CHAIN_MAX_ENTITY_SPREAD` | `4` | lower if a busy shared host keeps stitching unrelated incidents together |
+
 ## Build status
 - **Phase 1** scaffold + infra — done (Wazuh external; infra is Postgres-only).
 - **Phase 2** ingestion (synthetic alert JSON → DB) — done.
@@ -170,3 +323,4 @@ Postgres (optional, replaces SQLite): `docker compose up -d postgres`, then set 
 - **Phase 9** feedback loop (`app/feedback/logger.py`, analyst override → few-shot in triage prompt) — done.
 - **Phase 10** eval harness (`eval/run_eval.py`, 34-alert labeled set) — done; baseline acc 0.82, +few-shot 0.94 ([eval/RESULTS.md](eval/RESULTS.md)).
 - **Phase 12** live Wazuh ingestion (`app/ingestion/wazuh_client.py` poller + `app/pipeline.py`) — done against a live 4.9.2 stack.
+- **Phase 13** attack chains at scale — `CHAIN_MAX_ENTITY_SPREAD` knob, `scripts/chain_quality.py` diagnostic, container agent lab (`docker/agent/`, `docker-compose.agents.yml`); validation ongoing against real traffic.

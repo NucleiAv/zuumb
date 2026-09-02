@@ -20,6 +20,10 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./zuumb.db"
 
     correlation_window_minutes: int = 30
+    # chain stitcher: an entity in more incidents than this is a hub (proxy/jump box),
+    # not a real link — dropped so it can't stitch unrelated incidents into one chain.
+    # Lower it if real traffic is dense enough that legit chains stay small.
+    chain_max_entity_spread: int = 4
 
 
 settings = Settings()
