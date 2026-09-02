@@ -117,20 +117,28 @@
     var start = floor(first), end = floor(last), buckets = [], t;
     for (t = start; t <= end; t += step) buckets.push(t);
     var pos = {}; buckets.forEach(function (b, i) { pos[b] = i; });
+    // alerts = per-bucket rate. incidents = running total of distinct incidents
+    // (counted at their first alert; events are pre-sorted), so the line climbs
+    // to the total incident count — matching the KPI and the right-axis max.
     var alerts = buckets.map(function () { return 0; });
-    var incs = buckets.map(function () { return {}; });
+    var incidents = buckets.map(function () { return 0; });
+    var seen = {}, running = 0;
     events.forEach(function (e) {
       var i = pos[floor(e[0])];
       alerts[i]++;
-      if (e[1]) incs[i][e[1]] = 1;
+      if (e[1] && !seen[e[1]]) { seen[e[1]] = 1; running += 1; }
+      incidents[i] = running;  // last write per bucket = cumulative at bucket end
     });
+    for (var k = 1; k < incidents.length; k++) {
+      if (incidents[k] === 0) incidents[k] = incidents[k - 1];  // carry through empty buckets
+    }
     var fmt = fine
       ? { hour: '2-digit', minute: '2-digit' }
       : { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' };
     return {
       labels: buckets.map(function (ms) { return new Date(ms).toLocaleString([], fmt); }),
       alerts: alerts,
-      incidents: incs.map(function (s) { return Object.keys(s).length; }),
+      incidents: incidents,
     };
   }
 
@@ -185,13 +193,22 @@
       zoom: { wheel: { enabled: true }, drag: { enabled: false }, mode: 'x' },
       pan: { enabled: true, mode: 'x' },
     };
+    // separate axes: alerts/bucket runs into the 100s, the incident total is ~10
+    tlOpts.scales.y.title = { display: true, text: 'alerts', color: p.text };
+    tlOpts.scales.y1 = {
+      position: 'right', beginAtZero: true,
+      max: Math.max.apply(null, tl.incidents.concat([1])),  // = total incidents
+      ticks: { color: p.text, precision: 0 },
+      grid: { drawOnChartArea: false },
+      title: { display: true, text: 'incidents', color: p.text },
+    };
     instances.push(new Chart(document.getElementById('c-timeline'), {
       type: 'line',
       data: {
         labels: tl.labels,
         datasets: [
           { label: 'alerts', data: tl.alerts, borderColor: p.accent, backgroundColor: p.accent, tension: 0.3 },
-          { label: 'incidents', data: tl.incidents, borderColor: p.sev.high, backgroundColor: p.sev.high, tension: 0.3 },
+          { label: 'incidents', data: tl.incidents, borderColor: p.sev.high, backgroundColor: p.sev.high, tension: 0.3, yAxisID: 'y1' },
         ],
       },
       options: tlOpts,
