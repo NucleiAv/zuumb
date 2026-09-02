@@ -185,13 +185,21 @@
       zoom: { wheel: { enabled: true }, drag: { enabled: false }, mode: 'x' },
       pan: { enabled: true, mode: 'x' },
     };
+    // incidents/bucket (~1-3) would vanish against alerts/bucket (100s) on one axis
+    tlOpts.scales.y.title = { display: true, text: 'alerts', color: p.text };
+    tlOpts.scales.y1 = {
+      position: 'right', beginAtZero: true,
+      ticks: { color: p.text, precision: 0 },
+      grid: { drawOnChartArea: false },
+      title: { display: true, text: 'incidents', color: p.text },
+    };
     instances.push(new Chart(document.getElementById('c-timeline'), {
       type: 'line',
       data: {
         labels: tl.labels,
         datasets: [
           { label: 'alerts', data: tl.alerts, borderColor: p.accent, backgroundColor: p.accent, tension: 0.3 },
-          { label: 'incidents', data: tl.incidents, borderColor: p.sev.high, backgroundColor: p.sev.high, tension: 0.3 },
+          { label: 'incidents', data: tl.incidents, borderColor: p.sev.high, backgroundColor: p.sev.high, tension: 0.3, yAxisID: 'y1' },
         ],
       },
       options: tlOpts,
