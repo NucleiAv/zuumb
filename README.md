@@ -226,23 +226,11 @@ docker logs -f zuumb-agents-agent-lab-01-1
 
 ### B. A real host (bare-metal or VM)
 
-Run on the machine you want telemetry from. `WAZUH_MANAGER` is where the manager
-is reachable — `localhost` from the WSL box that runs the stack, otherwise the
-host's LAN IP.
-
-```bash
-curl -so /tmp/wazuh-agent.deb \
-  https://packages.wazuh.com/4.x/apt/pool/main/w/wazuh-agent/wazuh-agent_4.9.2-1_amd64.deb
-
-sudo WAZUH_MANAGER='localhost' WAZUH_AGENT_NAME='my-host' dpkg -i /tmp/wazuh-agent.deb
-sudo systemctl daemon-reload
-sudo systemctl enable --now wazuh-agent
-sudo /var/ossec/bin/wazuh-control status
-```
-
-`WAZUH_MANAGER` + the first service start auto-enrol against the manager's
-`authd` on port 1515. Windows/macOS use the platform installer from
-<https://packages.wazuh.com/4.x/> with the same `WAZUH_MANAGER` / `WAZUH_AGENT_NAME`.
+Same steps as **Live Wazuh → 3. Enrol an agent** above — run them on the other
+machine. Set `WAZUH_MANAGER` to `localhost` only if that machine runs the stack,
+otherwise to the manager host's LAN IP, and give each host a distinct
+`WAZUH_AGENT_NAME`. Windows/macOS use the platform installer from
+<https://packages.wazuh.com/4.x/> with the same two env vars.
 
 ### How many agents are running
 
@@ -256,7 +244,7 @@ curl -sk -H "Authorization: Bearer $TOKEN" "https://localhost:55000/agents/summa
 # quick check without the API token (counts id 000, the manager, too — subtract 1)
 docker exec wazuh49-wazuh.manager-1 /var/ossec/bin/agent_control -l | grep -c Active
 
-# just the container agents
+# just the container agents (from the repo root)
 docker compose -f docker-compose.agents.yml ps
 ```
 
@@ -283,8 +271,8 @@ down -v` then `up` to re-enrol from scratch.
 ### Remove an agent
 
 ```bash
-docker compose -f docker-compose.agents.yml stop agent-lab-02   # container: stop it
-docker exec wazuh49-wazuh.manager-1 /var/ossec/bin/manage_agents -r 003   # then drop id 003
+docker compose -f docker-compose.agents.yml stop agent-lab-02      # container: stop it
+docker exec wazuh49-wazuh.manager-1 /var/ossec/bin/manage_agents -r <id>   # id from agent_control -l
 ```
 
 The stack's `authd` has `<purge>yes</purge>`, so a removed key is cleared from
@@ -308,9 +296,13 @@ Let live data accumulate for a few days, then check chain quality:
 python -m scripts.chain_quality
 ```
 
-It prints, per chain, the entities that join each pair of adjacent stages. A
-chain flagged `!!` is linked by **one shared host across every stage** — often a
-proxy or jump box, not a real attack. Knobs (both `.env`-overridable):
+It prints, per chain, the entities that join each pair of adjacent stages, and
+flags two false-chain shapes:
+
+- **hub-host** — every link is one shared host (a proxy / jump box, not an attack path)
+- **weak-link** — adjacent stages share no entity directly (stitched only transitively)
+
+Knobs (both `.env`-overridable):
 
 | var | default | when to change |
 |-----|---------|----------------|
