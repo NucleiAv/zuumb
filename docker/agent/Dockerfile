@@ -18,7 +18,9 @@ COPY entrypoint.sh /entrypoint.sh
 COPY lab-noise.sh /lab-noise.sh
 RUN chmod +x /entrypoint.sh /lab-noise.sh
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-  CMD /var/ossec/bin/wazuh-control status | grep -q "wazuh-agentd is running" || exit 1
+# lock-free check: wazuh-control status contends with SCA/enrollment on the
+# start-script lock and times out; the agentd process is the real signal.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+  CMD pgrep -x wazuh-agentd > /dev/null || exit 1
 
 ENTRYPOINT ["/entrypoint.sh"]

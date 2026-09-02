@@ -11,7 +11,10 @@ CONF=/var/ossec/etc/ossec.conf
 sed -i "s|<address>[^<]*</address>|<address>${MANAGER}</address>|" "$CONF"
 grep -q "<agent_name>" "$CONF" \
   || sed -i "s|</enrollment>|  <agent_name>${NAME}</agent_name>\n  </enrollment>|" "$CONF"
-: > /var/ossec/etc/client.keys 2>/dev/null || true
+
+# Keep an existing key: the manager rejects a duplicate name, so re-enrolling on
+# every start breaks recreates. client.keys lives in a volume (see compose) and
+# agentd auto-enrols only when it's genuinely empty.
 
 # LAB_NOISE=1: also watch an auth log the noise generator writes to
 if [ "${LAB_NOISE:-0}" = "1" ] && ! grep -q "/var/log/auth.log" "$CONF"; then

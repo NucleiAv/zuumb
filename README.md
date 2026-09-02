@@ -167,6 +167,11 @@ There's no `wazuh/wazuh-agent` image for 4.9.x (Docker Hub starts at 4.13), so
 `docker/agent/` builds one from the official `.deb`. `docker-compose.agents.yml`
 runs two of them.
 
+> Run every `docker compose -f docker-compose.agents.yml …` command **from the
+> repo root** (the file is `./docker-compose.agents.yml`). From WSL that's
+> `cd /mnt/<drive>/…/zuumb` first. Plain `docker …` commands (below) work from
+> anywhere.
+
 ```bash
 # the Wazuh stack must be up first (it owns the network the agents join)
 docker compose -f docker-compose.agents.yml up -d --build
@@ -174,6 +179,10 @@ docker compose -f docker-compose.agents.yml up -d --build
 
 - `agent-lab-01`, `agent-lab-02` join the manager's `wazuh49_default` network and
   enrol automatically on first start.
+- Each keeps its enrolment key in a volume (`agentNN-etc`). The manager rejects a
+  *duplicate agent name*, so an agent must enrol exactly once — the volume lets
+  `restart` / recreate reconnect instead of re-enrolling. To force a clean
+  re-enrol: `docker compose -f docker-compose.agents.yml down -v`.
 - `restart: unless-stopped` — they come back on every Docker / laptop restart
   until you explicitly `docker compose -f docker-compose.agents.yml down`.
 - `LAB_NOISE=1` (in the compose file) seeds realistic sshd auth-failure traffic
@@ -181,18 +190,23 @@ docker compose -f docker-compose.agents.yml up -d --build
   **Remove `LAB_NOISE` when the agents monitor real hosts** — a real deployment
   watches real activity, it doesn't manufacture it.
 
-**Add a third (Nth) agent** — copy a service block in `docker-compose.agents.yml`:
+**Add a third (Nth) agent** — in `docker-compose.agents.yml`, copy a service
+block and add its volume:
 
 ```yaml
+services:
   agent-lab-03:
     <<: *agent
     hostname: agent-lab-03
+    volumes: ["agent03-etc:/var/ossec/etc"]
+volumes:
+  agent03-etc:
 ```
 
 then `docker compose -f docker-compose.agents.yml up -d --build`. The `hostname`
 becomes the agent name the manager registers.
 
-**Container agent commands**
+**Container agent commands** — from the repo root:
 
 ```bash
 docker compose -f docker-compose.agents.yml ps            # status / health
@@ -200,6 +214,14 @@ docker compose -f docker-compose.agents.yml logs -f agent-lab-01
 docker compose -f docker-compose.agents.yml restart agent-lab-02
 docker compose -f docker-compose.agents.yml down          # stop + remove all
 docker compose -f docker-compose.agents.yml build --no-cache   # rebuild the image (e.g. new .deb)
+```
+
+…or from anywhere, by container name (`docker ps` to list them):
+
+```bash
+docker ps --filter name=zuumb-agents            # the agent containers + health
+docker restart zuumb-agents-agent-lab-02-1
+docker logs -f zuumb-agents-agent-lab-01-1
 ```
 
 ### B. A real host (bare-metal or VM)
@@ -253,6 +275,10 @@ If an agent is stuck "Never connected": it enrolled (has a key) but can't reach
 the manager on **1514/tcp** — check the address it's using
 (`grep '<address>' /var/ossec/etc/ossec.conf` in the agent) and that 1514 is
 published by the stack.
+
+If a container agent logs `Duplicate agent name … Unable to add agent`: its key
+volume is out of sync with the manager. `docker compose -f docker-compose.agents.yml
+down -v` then `up` to re-enrol from scratch.
 
 ### Remove an agent
 
