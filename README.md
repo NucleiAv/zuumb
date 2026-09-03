@@ -460,12 +460,14 @@ RESPONSE_RATE_LIMIT_SECONDS=30
 > `.venv\Scripts\python.exe`. **WSL** = the `docker exec ...` checks. A zuumb
 > command in WSL fails with `No module named 'scripts'`.
 
-**3a. (recommended) start from an empty database** — PowerShell, uvicorn stopped:
+**3a. start from an empty database** — PowerShell, uvicorn stopped:
 ```powershell
 Rename-Item zuumb.db zuumb.db.bak     # keeps your live data aside; you restore it in step 5
 ```
-*Why:* on a busy database the demo alerts merge into existing incidents and the
-example targets get replaced by real ones. A fresh DB keeps the walkthrough clean.
+*Why this matters:* on a database that already has live data, the demo alerts get
+absorbed into an existing host incident **and** older proposed tasks (same title)
+hide the freshly tagged ones — so no `⚡` action tag appears and there is nothing
+to approve. A fresh DB is required for the walkthrough, not just tidier.
 
 **3b. load the sample alerts** — PowerShell:
 ```powershell

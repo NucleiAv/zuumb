@@ -17,9 +17,12 @@ import os
 from datetime import datetime, timedelta
 from pathlib import Path
 
+# AGENT_ID must be a REAL enrolled agent (live dispatch targets it); AGENT_NAME is
+# just the incident label — kept unique + the date kept old so these two incidents
+# stay separate instead of merging into a busy live host incident.
 AID = os.environ.get("AGENT_ID", "006")
-AGENT_NAME = os.environ.get("AGENT_NAME", "agent-lab-01")
-DAY0 = datetime(2026, 9, 3, 20, 0)
+AGENT_NAME = os.environ.get("AGENT_NAME", "ar-demo-01")
+DAY0 = datetime(2026, 8, 20, 3, 0)
 OUT = Path(__file__).with_name("ar_demo.jsonl")
 _n = 0
 
