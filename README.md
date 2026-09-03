@@ -311,127 +311,267 @@ Knobs (both `.env`-overridable):
 
 ## Automated mitigation (active response, Phase 14)
 
-Approving a response task can dispatch a real command to the agent via Wazuh's
-Active Response API — **but only** from a fixed allowlist, only after a human
-clicks Approve, and only if `RESPONSE_DRY_RUN` is off.
+### In plain English
 
-| Action | Wazuh script | Needs | Second confirm |
-|--------|--------------|-------|----------------|
-| `block-ip` | `!firewall-drop` | a source IP + agent id from the incident | no |
-| `disable-user` | `!disable-account` | a username + agent id | **yes** |
+zuumb reads Wazuh alerts, groups them into **incidents**, and for each incident
+suggests **response tasks** — short instructions like "block that IP" or "lock
+that account". Until Phase 14 those were just notes for a person to act on by
+hand. Now a person can **click one button** and have zuumb carry the task out on
+the affected machine — by asking Wazuh to do it, never by running commands
+itself.
 
-The `!` prefix runs the hardened agent script directly (no manager
-`<active-response>` block needed). Everything else stays a manual task.
+Three things are always true:
 
-**How it flows:** `app/response/playbooks.py` tags a proposed task with an
-`action` when the incident yields a target (ip/user) and an agent id →
-`app/response/approve.py` on Approve either records intent (dry-run) or calls
-`app/response/active_response.py:dispatch()` → `PUT /active-response` with the
-`zuumb-ar` credential → a row in `response_actions_log`, shown at `/audit` and
-under the incident's "Dispatched actions".
+- Nothing happens on its own — a human clicks **Approve** first.
+- zuumb can only do a few **specific** things (see the table below), never "run
+  any command".
+- Out of the box it runs in **practice mode** (`RESPONSE_DRY_RUN=true`): the
+  button works, writes a record, and touches nothing.
 
-### `RESPONSE_DRY_RUN` — default **on**
+### Words used here
 
-With `RESPONSE_DRY_RUN=true` (the default in `.env.example`), Approve marks the
-task done and writes a **`response_actions_log`** row recording *what would have
-been dispatched* — nothing reaches a host. Every dispatch, dry-run or live, is in
-that log; see it at **`/audit`** or under an incident's "Dispatched actions".
+| Term | Plain meaning |
+|------|---------------|
+| **Wazuh manager** | The central Wazuh server. zuumb talks to it over HTTPS on port `55000`. |
+| **Wazuh agent** | A small program on a machine you want to protect. Each has a numeric **agent id** — `001`, `006`, and so on. |
+| **Active Response (AR)** | A built-in Wazuh feature: the manager tells an agent to run a small, pre-installed script (block an IP, lock an account, …). |
+| **AR script** | The pre-installed program the agent runs — e.g. `firewall-drop` (adds a firewall rule) or `disable-account` (locks a local user). |
+| **Dispatch** | zuumb sending one "run this AR script on this agent" request to the manager. |
+| **Allowlist** | The short, fixed list of actions zuumb is permitted to dispatch. Anything not on it is impossible. |
+| **Dry-run** | Practice mode. Approving records *what would have happened* and stops. |
+| **Audit log** | A table (`response_actions_log`) with one row per Approve click: what, where, who, when, result. Shown at `/audit`. |
+| **`zuumb-ar`** | A dedicated Wazuh login zuumb uses **only** to dispatch AR. It can do that and nothing else. |
+| **iptables DROP rule** | A Linux firewall entry that silently discards traffic from an IP. `firewall-drop` adds one. |
+| **RBAC** | "Role-Based Access Control" — Wazuh's way of saying "this login may do X but not Y". |
+| **PowerShell / WSL** | zuumb runs on Windows → **PowerShell**. Docker + Wazuh run under **WSL** (Linux). Commands below say which to use. |
 
-Set `RESPONSE_DRY_RUN=false` **only** when you want approvals to run real
-commands on real machines. Live dispatches are rate-limited
-(`RESPONSE_RATE_LIMIT_SECONDS`, default 30).
+### The safety rules, and why each one exists
 
-### The AR credential
+| Rule | Why |
+|------|-----|
+| Only actions on a fixed allowlist | A bug or a bad LLM response can never turn into an arbitrary command. |
+| A human clicks **Approve** | zuumb proposes; a person decides. No auto-fire. |
+| **Dry-run is the default** | You can test the whole flow without touching a real machine. |
+| A **separate least-privilege login** (`zuumb-ar`) | If that credential leaks it can *only* dispatch AR — not read alerts, delete agents, or change settings. |
+| **Every** Approve is logged (dry-run and live) | There is always a record of what was, or would have been, done. |
+| `disable-user` needs a **second confirm** | Locking an account can lock out a real person; one stray click shouldn't. |
+| Live dispatches are **rate-limited** (30 s default) | A double-click or a loop can't fire a burst of real actions. |
 
-A **separate** least-privilege Manager API user (`:55000`), never the ingestion
-one. Wazuh already ships a built-in policy (`agents_commands_agents`) that grants
-exactly `active-response:command` — attach it to a fresh role + user:
+### What happens when you click Approve
+
+```text
+ Wazuh agent  --alerts-->  zuumb poller  --score-->  incident + response tasks
+                                                              |
+                                    a task gets TAGGED with:  action + target + agent id
+                                    e.g.  block-ip / 198.51.100.77 / 006
+                                                              |
+                                          you click  "Approve"  in the dashboard
+                                                              |
+                                             is RESPONSE_DRY_RUN true?
+                        +---------------- YES ----------------+------------- NO -------------+
+                        |                                    |                             |
+              write an audit row                     check the 30 s rate limit
+              marked "dry-run",                              |
+              dispatch NOTHING                       POST /active-response
+                        |                            (logs in as zuumb-ar)
+                        |                                    |
+                        |                            Wazuh manager --> agent
+                        |                                    |
+                        |                            agent runs firewall-drop
+                        |                                    |
+                        |                            real iptables DROP rule added
+                        |                                    |
+                        |                            write an audit row
+                        |                            marked "live" + the result
+                        +------------------+-----------------+
+                                           |
+                             row shows at  /audit  and on the incident page
+```
+
+Which file does what:
+
+```text
+app/response/playbooks.py       proposes tasks; tags the ones that map to an action
+app/response/approve.py         on Approve: dry-run log  OR  call dispatch(), then log
+app/response/active_response.py  dispatch(): the ONLY code that calls the Wazuh AR API
+app/db/models.py                ResponseActionLog  = the audit table
+app/web/routes.py               POST /tasks/<id>/approve   and   GET /audit
+```
+
+### The two actions zuumb can take
+
+| Action | What it does | Wazuh script | Needs from the incident | Second confirm? |
+|--------|--------------|--------------|-------------------------|-----------------|
+| `block-ip` | Firewall-drops an attacker's source IP on the affected host | `!firewall-drop` | a source IP **and** the agent id | no |
+| `disable-user` | Locks a compromised local account on the affected host | `!disable-account` | a username **and** the agent id | **yes** |
+
+The `!` prefix tells Wazuh "run this named script directly". Any other response
+task stays a manual to-do — zuumb will not dispatch it.
+
+---
+
+### Step 1 — create the `zuumb-ar` login (once)
+
+Run **in WSL** — this talks to the Wazuh manager. Line by line:
 
 ```bash
-API='https://localhost:55000'; H="Authorization: Bearer $(curl -sk -u wazuh-wui:'MyS3cr37P450r.*-' -X POST "$API/security/user/authenticate?raw=true")"
+API='https://localhost:55000'
+# log in as the manager admin (default for the 4.9.2 docker stack) and keep the token
+H="Authorization: Bearer $(curl -sk -u wazuh-wui:'MyS3cr37P450r.*-' -X POST "$API/security/user/authenticate?raw=true")"
+# helper: pull the numeric id out of a Wazuh JSON reply
 id() { python3 -c "import sys,json;print(json.load(sys.stdin)['data']['affected_items'][0]['id'])"; }
-AR_PASS='Zuumb.AR.pass1'          # 8+ chars, mixed — and NO '!' (bash history-expands it)
+# password: 8+ chars, upper+lower+digit+symbol, and NO '!' (bash mangles '!')
+AR_PASS='Zuumb.AR.pass1'
 
+# 1) make an empty role called "zuumb_ar"
 ROLE=$(curl -sk -H "$H" -X POST "$API/security/roles" -H 'Content-Type: application/json' -d '{"name":"zuumb_ar"}' | id)
-curl -sk -H "$H" -X POST "$API/security/roles/$ROLE/policies?policy_ids=6" >/dev/null   # 6 = agents_commands_agents
+# 2) attach Wazuh's built-in policy #6 = "may run active-response commands", nothing else
+curl -sk -H "$H" -X POST "$API/security/roles/$ROLE/policies?policy_ids=6" >/dev/null
+# 3) create the user "zuumb-ar"
 USER=$(curl -sk -H "$H" -X POST "$API/security/users" -H 'Content-Type: application/json' -d "{\"username\":\"zuumb-ar\",\"password\":\"$AR_PASS\"}" | id)
+# 4) give the user the role
 curl -sk -H "$H" -X POST "$API/security/users/$USER/roles?role_ids=$ROLE" >/dev/null
 
-# verify: AR allowed, everything else denied
+# --- prove the login is correctly limited ---
 ART=$(curl -sk -u "zuumb-ar:$AR_PASS" -X POST "$API/security/user/authenticate?raw=true"); sleep 2
-curl -sk -o /dev/null -w 'PUT /active-response -> %{http_code} (want 200)\n' -H "Authorization: Bearer $ART" \
+curl -sk -o /dev/null -w 'dispatch AR  -> %{http_code}  (want 200 = allowed)\n' -H "Authorization: Bearer $ART" \
   -X PUT "$API/active-response?agents_list=001" -H 'Content-Type: application/json' -d '{"command":"!firewall-drop","arguments":["203.0.113.9"]}'
-curl -sk -o /dev/null -w 'DELETE /agents      -> %{http_code} (want 403)\n' -H "Authorization: Bearer $ART" -X DELETE "$API/agents?agents_list=999&status=all&older_than=0s"
+curl -sk -o /dev/null -w 'delete agent -> %{http_code}  (want 403 = blocked)\n' -H "Authorization: Bearer $ART" \
+  -X DELETE "$API/agents?agents_list=999&status=all&older_than=0s"
 ```
 
-Then in `.env`: `WAZUH_AR_API_URL`, `WAZUH_AR_API_USER=zuumb-ar`, `WAZUH_AR_API_PASSWORD`.
+`200` then `403` = success: `zuumb-ar` may dispatch active response and nothing else.
 
-### Try the flow, end to end
+### Step 2 — tell zuumb about it
 
-`data/synthetic_alerts/ar_demo.jsonl` builds two incidents on `agent-lab-01`: a
-6-alert SSH brute force from `203.0.113.99` → **block-ip** task, and a
-useradd+login by `mallory` → **disable-user** task (confirm twice).
+In `.env` (Windows, repo root):
 
-> zuumb and its venv are on Windows — run steps **1–7 in PowerShell from the repo
-> root** (`.venv\Scripts\python.exe`). Docker is under WSL — the `docker exec`
-> checks run **in WSL**. `python -m scripts.run_poc` fails from WSL: wrong
-> interpreter, wrong directory.
+```ini
+WAZUH_AR_API_URL=https://localhost:55000
+WAZUH_AR_API_USER=zuumb-ar
+WAZUH_AR_API_PASSWORD=Zuumb.AR.pass1
+RESPONSE_DRY_RUN=true            # leave true until you deliberately go live
+RESPONSE_RATE_LIMIT_SECONDS=30
+```
 
-**1. (only if `agent-lab-01` isn't id `006`)** — check in WSL with
-`docker exec wazuh49-wazuh.manager-1 /var/ossec/bin/agent_control -l`, then in PowerShell:
+### Step 3 — watch it work, safely (dry-run)
+
+> **PowerShell** = zuumb commands, run from `D:\ai-soc-xdr` with
+> `.venv\Scripts\python.exe`. **WSL** = the `docker exec ...` checks. A zuumb
+> command in WSL fails with `No module named 'scripts'`.
+
+**3a. (recommended) start from an empty database** — PowerShell, uvicorn stopped:
 ```powershell
-$env:AGENT_ID=<id>; .venv\Scripts\python.exe data\synthetic_alerts\gen_ar_demo.py
+Rename-Item zuumb.db zuumb.db.bak     # keeps your live data aside; you restore it in step 5
 ```
+*Why:* on a busy database the demo alerts merge into existing incidents and the
+example targets get replaced by real ones. A fresh DB keeps the walkthrough clean.
 
-**2. Ingest + correlate** (PowerShell):
+**3b. load the sample alerts** — PowerShell:
 ```powershell
 .venv\Scripts\python.exe -m scripts.run_poc --offline
 ```
+*What it does:* reads the sample alert files in `data\synthetic_alerts\`, scores
+them (`--offline` = a keyword scorer, no paid LLM), groups them into incidents,
+and proposes response tasks. `data\synthetic_alerts\ar_demo.jsonl` is built to
+produce one `block-ip` task and one `disable-user` task on `agent-lab-01`.
 
-**3. Find the action tasks** (PowerShell):
+**3c. list the tasks zuumb tagged as dispatchable** — PowerShell:
 ```powershell
-.venv\Scripts\python.exe -c "from app.db.session import get_session; from app.db.models import Task; from sqlmodel import select; s=get_session(); [print('incident',t.incident_id,'task',t.id,'->',t.action,t.action_target,'@',t.agent_id) for t in s.exec(select(Task).where(Task.action!=None)).all()]"
+.venv\Scripts\python.exe -c "from app.db.session import get_session; from app.db.models import Task; from sqlmodel import select; s=get_session(); [print(f'incident {t.incident_id}  task {t.id}  ->  {t.action}  {t.action_target}  on agent {t.agent_id}') for t in s.exec(select(Task).where(Task.action!=None)).all()]"
 ```
+*What it does:* prints every one-click action task. Note the `task <N>` number of
+a `block-ip` line whose agent id is a **real** agent (list them in WSL with
+`docker exec wazuh49-wazuh.manager-1 /var/ossec/bin/agent_control -l`).
 
-**4. Dry-run** — start the app, approve, look at `/audit`:
+**3d. start zuumb** — PowerShell:
 ```powershell
 .venv\Scripts\python.exe -m uvicorn app.main:app --port 8000
 ```
-In the browser open the incident, click **Approve** on the block-ip task (for
-disable-user you'll get a red *Confirm dispatch* — click it again). Or from a
-second PowerShell: `curl.exe -s -X POST http://localhost:8000/tasks/<task-id>/approve`.
-`/audit` shows the row as `dry-run`; nothing reached the host.
+Open `http://localhost:8000`.
 
-**5. Go live** — stop uvicorn (Ctrl+C), then (PowerShell):
+**3e. approve — in the browser:**
+1. Incidents list → click the incident.
+2. Scroll to **Response tasks**. The dispatchable one shows a tag like
+   `⚡ block-ip → 198.51.100.77 · agent 006` and a yellow **DRY-RUN** badge.
+3. Click **Approve**.
+   - `block-ip` → done at once.
+   - `disable-user` → the button turns red and says **Confirm dispatch**; click it
+     again to go through (this is the "second confirm" safety rule).
+
+*What just happened:* `RESPONSE_DRY_RUN=true`, so zuumb wrote an audit row saying
+"would have run `block-ip` on agent 006" and stopped. Nothing was sent anywhere.
+
+**3f. check the record — in the browser:**
+
+| Look at | You should see |
+|---------|----------------|
+| top nav → **Audit** (`/audit`) | one row, **MODE = dry-run**, **RESULT = ok** |
+| the incident page → **Dispatched actions** | the same row |
+
+### Step 4 — do it for real (live)
+
+> ⚠️ This runs a real firewall command on the target agent. Use a **throwaway**
+> agent (`agent-lab-01` / `agent-lab-02` from `docker-compose.agents.yml`), never
+> a machine you care about.
+
+**4a. flip the switch** — PowerShell (stop uvicorn with Ctrl+C first):
 ```powershell
 (Get-Content .env) -replace 'RESPONSE_DRY_RUN=true','RESPONSE_DRY_RUN=false' | Set-Content .env
 .venv\Scripts\python.exe -m uvicorn app.main:app --port 8000
 ```
+*What it does:* `RESPONSE_DRY_RUN=false` means Approve now really dispatches.
 
-**6. Approve the block-ip task again** (browser or `curl.exe` as in step 4).
-`/audit` now shows `live · ok · 200`.
+**4b. approve the same `block-ip` task again** — browser, or PowerShell:
+```powershell
+curl.exe -s -X POST http://localhost:8000/tasks/<TASK-NUMBER>/approve
+```
+Put the number from step 3c where `<TASK-NUMBER>` is (e.g. `194`).
+*Check in the UI:* `/audit` — the newest row now says **MODE = live**,
+**RESULT = ok · 200**.
 
-**7. Verify on the agent** (WSL):
+**4c. confirm it actually happened** — WSL (use **your** task's target IP):
 ```bash
-docker exec zuumb-agents-agent-lab-01-1 iptables -S | grep 203.0.113.99
+docker exec zuumb-agents-agent-lab-01-1 iptables -S | grep 198.51.100.77
 docker exec zuumb-agents-agent-lab-01-1 tail -3 /var/ossec/logs/active-responses.log
 ```
-You should see a `-A INPUT -s 203.0.113.99/32 -j DROP` rule and the
-`firewall-drop` invocation.
+Expected:
+```text
+-A INPUT   -s 198.51.100.77/32 -j DROP        <- the firewall now blocks that IP
+-A FORWARD -s 198.51.100.77/32 -j DROP
+...
+active-response/bin/firewall-drop: ... "extra_args":["198.51.100.77"] ...
+active-response/bin/firewall-drop: Ended
+```
+The `-j DROP` line is the whole point: on your click, zuumb had Wazuh block a
+real IP on a real host.
 
-### Revert
+### Step 5 — put everything back
 
+**5a. back to practice mode** — PowerShell (Ctrl+C uvicorn):
 ```powershell
-# PowerShell — back to dry-run, then restart uvicorn
 (Get-Content .env) -replace 'RESPONSE_DRY_RUN=false','RESPONSE_DRY_RUN=true' | Set-Content .env
 ```
+
+**5b. remove the firewall rule** — WSL (your target IP):
 ```bash
-# WSL — the container's iptables isn't persisted; a restart clears the DROP rule
-docker compose -f docker-compose.agents.yml restart agent-lab-01
+docker exec zuumb-agents-agent-lab-01-1 sh -c \
+  'iptables -D INPUT -s 198.51.100.77/32 -j DROP; iptables -D FORWARD -s 198.51.100.77/32 -j DROP; \
+   iptables -S | grep 198.51.100.77 || echo cleared'
 ```
-The `ar_demo` incidents and the `/audit` rows are harmless history. For a clean
-slate: `Remove-Item zuumb.db` (PowerShell) and re-run step 2 — or keep it and
-`mv zuumb.db` aside if you want the live data back later.
+*Or* `docker compose -f docker-compose.agents.yml restart agent-lab-01` — the
+container's firewall rules aren't saved, so a restart wipes them.
+
+**5c. restore your real database** (if you renamed it in 3a) — PowerShell:
+```powershell
+Remove-Item zuumb.db; Rename-Item zuumb.db.bak zuumb.db
+```
+
+**5d. restart zuumb** — PowerShell:
+```powershell
+.venv\Scripts\python.exe -m uvicorn app.main:app --port 8000
+```
+It's back in dry-run. The `/audit` rows stay — that history is intentional.
 
 ## Build status
 - **Phase 1** scaffold + infra — done (Wazuh external; infra is Postgres-only).
