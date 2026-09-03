@@ -67,6 +67,26 @@ class Task(SQLModel, table=True):
     status: str = "todo"  # todo | in_progress | done
     priority: str = "medium"  # low | medium | high
     assignee: str | None = None
+    # Phase 14: set only on tasks that map to an allowlisted active-response action.
+    action: str | None = None          # block-ip | disable-user  (see app/response/active_response.py)
+    action_target: str | None = None   # the IP / username the action needs
+    agent_id: str | None = None        # Wazuh agent id to dispatch against
+
+
+class ResponseActionLog(SQLModel, table=True):
+    """Audit trail — every approved active-response dispatch (dry-run included)."""
+    id: int | None = Field(default=None, primary_key=True)
+    task_id: int = Field(foreign_key="task.id", index=True)
+    incident_id: int = Field(foreign_key="incident.id", index=True)
+    action: str
+    target: str
+    agent_id: str
+    dry_run: bool
+    approver: str = "analyst"
+    ok: bool = False
+    status_code: int | None = None
+    response_text: str = ""
+    created_at: datetime = Field(default_factory=_now)
 
 
 class AnalystFeedback(SQLModel, table=True):

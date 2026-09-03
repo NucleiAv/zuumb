@@ -72,9 +72,69 @@ def test_approve_missing_task_raises():
         approve_task(s, 123456)
 
 
-def test_module_has_no_execution_primitives():
+# --- execution guard (Phase 14): scoped allowlist, not "no execution ever" -------
+# playbooks.py still only proposes; the ONE permitted execution path is
+# active_response.py, and it may talk to nothing but the Wazuh AR API.
+_NEVER = ["subprocess", "os.system", "os.popen", "Popen", "pty.", "socket.",
+          "paramiko", "pexpect", "winrm", "urllib.request", "eval(", " exec(", "__import__("]
+
+
+def test_playbooks_stays_proposal_only():
     src = open(playbooks.__file__, encoding="utf-8").read()
-    banned = ["subprocess", "os.system", "os.popen", "Popen", "pty.spawn", "socket.",
-              "import httpx", "import requests", "urllib.request", "eval(", " exec(", "__import__("]
-    hits = [b for b in banned if b in src]
-    assert hits == [], f"response layer must not execute anything; found {hits}"
+    hits = [b for b in _NEVER + ["import httpx", "import requests"] if b in src]
+    assert hits == [], f"playbooks.py must not execute anything; found {hits}"
+
+
+def test_active_response_is_scoped_to_the_wazuh_ar_api():
+    from app.response import active_response
+    src = open(active_response.__file__, encoding="utf-8").read()
+
+    hits = [b for b in _NEVER if b in src]
+    assert hits == [], f"active_response.py may only call the AR API; found {hits}"
+
+    # httpx is allowed here — but only pointed at the configured AR API, no other URLs
+    import re
+    urls = re.findall(r"https?://[^\"'\s)]+", src)
+    assert urls == [], f"active_response.py hard-codes a URL: {urls}"
+    assert "settings.wazuh_ar_api_url" in src
+    # the action set is a fixed dict, not built from input
+    assert "ACTIONS: dict[str, dict] = {" in src
+
+
+def test_dispatch_rejects_actions_outside_the_allowlist():
+    from app.response.active_response import dispatch
+    with pytest.raises(ValueError):
+        dispatch("run-script", "x", "001", client=object())
+
+
+def test_dispatch_puts_one_ar_call_with_the_mapped_command():
+    from app.response import active_response
+
+    class _Resp:
+        status_code = 200
+        text = '{"data":{"affected_items":["001"]}}'
+
+        def json(self):
+            return {"data": {"token": "tok"}}
+
+        def raise_for_status(self):
+            pass
+
+    class _Client:
+        def __init__(self):
+            self.calls = []
+
+        def post(self, url, **kw):
+            self.calls.append(("POST", url))
+            return _Resp()
+
+        def put(self, url, **kw):
+            self.calls.append(("PUT", url, kw.get("json")))
+            return _Resp()
+
+    c = _Client()
+    out = active_response.dispatch("block-ip", "203.0.113.9", "001", client=c)
+    assert out == {"ok": True, "status_code": 200, "text": _Resp.text}
+    put = next(x for x in c.calls if x[0] == "PUT")
+    assert "agents_list=001" in put[1]
+    assert put[2]["command"] == "firewall-drop" and put[2]["arguments"] == ["203.0.113.9"]
