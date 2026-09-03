@@ -6,7 +6,7 @@ ARG WAZUH_VERSION=4.9.2-1
 ARG TARGETARCH=amd64
 
 RUN apt-get update \
- && apt-get install -y --no-install-recommends ca-certificates curl procps lsb-release adduser \
+ && apt-get install -y --no-install-recommends ca-certificates curl procps lsb-release adduser iptables \
  && curl -fsSL -o /tmp/wazuh-agent.deb \
       "https://packages.wazuh.com/4.x/apt/pool/main/w/wazuh-agent/wazuh-agent_${WAZUH_VERSION}_${TARGETARCH}.deb" \
  && (dpkg -i /tmp/wazuh-agent.deb || apt-get install -f -y --no-install-recommends) \
