@@ -51,6 +51,12 @@
   {% endfor %}
   </tbody>
 </table>
+{% if total_alerts > shown_alerts %}
+<p class="subtle">Showing the first {{ shown_alerts }} of {{ total_alerts }} alerts (oldest first).
+  <a href="{{ request.url.include_query_params(all=1) }}">show all</a></p>
+{% elif show_all and total_alerts > alerts_cap %}
+<p class="subtle">Showing all {{ total_alerts }} alerts. <a href="{{ request.url.remove_query_params('all') }}">collapse</a></p>
+{% endif %}
 
 <h2 class="section">Response tasks</h2>
 <p class="subtle">

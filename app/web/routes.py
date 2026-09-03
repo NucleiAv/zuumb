@@ -40,6 +40,8 @@ templates.env.globals["charts_v"] = int(
 
 
 _FILTER_COLS = {"rule": Alert.rule_id, "src_ip": Alert.src_ip, "host": Alert.agent_name}
+_PER_PAGE = 50          # incidents per page
+_ALERTS_CAP = 200       # alert rows rendered per incident detail (?all=1 for the rest)
 
 
 def _instant(s: str | None) -> datetime | None:
@@ -125,9 +127,17 @@ def incidents_list(request: Request):
         active["severity"] = severity
     if dow is not None and hour is not None:
         active["cell"] = f"{DAYS[int(dow)]} {int(hour):02d}:00"
+
+    total = len(incidents)
+    page = max(1, int(p.get("page") or 1))
+    pages = max(1, -(-total // _PER_PAGE))
+    page = min(page, pages)
+    incidents = incidents[(page - 1) * _PER_PAGE: page * _PER_PAGE]
+
     return templates.TemplateResponse(request, "incidents.html", {
         "incidents": incidents, "counts": counts, "stats": stats,
         "filters": active, "sort_dir": sort_dir, "time_range": p.get("range"),
+        "total": total, "page": page, "pages": pages,
         "date_from": p.get("fromd"), "date_to": p.get("tod"),  # raw local dates, for the inputs
     })
 
@@ -234,9 +244,12 @@ def incident_detail(request: Request, incident_id: int):
                 select(IncidentAlert).where(IncidentAlert.incident_id == incident_id)
             ).all()
         ]
-        alerts = s.exec(
-            select(Alert).where(Alert.id.in_(alert_ids)).order_by(Alert.timestamp)
-        ).all()
+        total_alerts = len(alert_ids)
+        show_all = request.query_params.get("all") == "1"
+        aq = select(Alert).where(Alert.id.in_(alert_ids)).order_by(Alert.timestamp)
+        if not show_all:
+            aq = aq.limit(_ALERTS_CAP)
+        alerts = s.exec(aq).all()
         verdicts = {  # keep the latest model verdict per alert
             v.alert_id: v
             for v in s.exec(
@@ -263,6 +276,8 @@ def incident_detail(request: Request, incident_id: int):
         rows.append((a, v, overrides.get(v.id) if v else None))
     return templates.TemplateResponse(request, "incident_detail.html", {
         "incident": incident, "rows": rows, "tasks": tasks, "dispatches": dispatches,
+        "total_alerts": total_alerts, "shown_alerts": len(rows), "show_all": show_all,
+        "alerts_cap": _ALERTS_CAP,
         "dry_run": settings.response_dry_run,
         "confirm_task": request.query_params.get("confirm"),
     })
