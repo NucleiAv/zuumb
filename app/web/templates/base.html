@@ -159,6 +159,7 @@
     flex: 0 0 200px; width: 200px; display: flex; flex-direction: column;
     padding: .5rem .65rem; border: 1px solid var(--border); border-left: 4px solid var(--border);
     border-radius: 4px; background: var(--card); font-size: 12px;
+    max-height: 320px; overflow-y: auto;   /* a stage that shares dozens of entities scrolls, not stretches */
   }
   /* few stages: modestly bigger boxes, whole row already centered by the parent */
   .chain-timeline.few .stage-node { flex-basis: 250px; width: 250px; padding: .8rem 1rem; font-size: 13px; }
@@ -170,6 +171,9 @@
   .stage-tactic { font-weight: 600; margin: .1rem 0; }
   .stage-node > a { word-break: break-word; }
   .stage-link { margin-top: auto; padding-top: .35rem; font-size: 10.5px; color: var(--muted); }
+  .stage-link details.more { margin-top: .2rem; }
+  .stage-link details.more summary { cursor: pointer; color: var(--accent); }
+  .stage-link details.more[open] { word-break: break-all; }
   .stage-arrow { flex: 0 0 34px; display: flex; align-items: center; justify-content: center;
     color: var(--muted); font-size: 1.1rem; }
 

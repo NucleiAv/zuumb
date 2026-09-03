@@ -32,8 +32,12 @@
     <div class="stage-tactic">{{ st.tactic }}</div>
     <a href="/incidents/{{ st.incident.id }}">{{ st.incident.title }}</a>
     {% if st.shared_with_earlier %}
+    {% set shared = st.shared_with_earlier %}
     <div class="stage-link" title="what makes this a chain, not a coincidence">
-      &#8618; shares {{ st.shared_with_earlier | join(', ') }}
+      &#8618; shares {{ shared[:3] | join(', ') }}
+      {% if shared | length > 3 %}
+      <details class="more"><summary>+{{ shared | length - 3 }} more</summary>{{ shared[3:] | join(', ') }}</details>
+      {% endif %}
     </div>
     {% endif %}
   </div>
@@ -54,7 +58,9 @@
       <td><a href="/incidents/{{ st.incident.id }}">{{ st.incident.title }}</a></td>
       <td class="sev-{{ st.incident.severity }}">{{ st.incident.severity }}</td>
       <td>{{ st.alert_count }}</td>
-      <td class="muted">{{ st.shared_with_earlier | join(', ') if st.shared_with_earlier else '—' }}</td>
+      <td class="muted">
+        {% if st.shared_with_earlier %}{{ st.shared_with_earlier[:3] | join(', ') }}{% if st.shared_with_earlier | length > 3 %} <span class="muted">(+{{ st.shared_with_earlier | length - 3 }})</span>{% endif %}{% else %}&mdash;{% endif %}
+      </td>
     </tr>
   {% endfor %}
   </tbody>
