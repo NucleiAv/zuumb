@@ -309,6 +309,56 @@ Knobs (both `.env`-overridable):
 | `CORRELATION_WINDOW_MINUTES` | `30` | shrink if noisy traffic over-merges unrelated alerts into one incident |
 | `CHAIN_MAX_ENTITY_SPREAD` | `4` | lower if a busy shared host keeps stitching unrelated incidents together |
 
+## Active response (Phase 14)
+
+Approving a response task can dispatch a real command to the agent via Wazuh's
+Active Response API — **but only** from a fixed allowlist, only after a human
+clicks Approve, and only if `RESPONSE_DRY_RUN` is off.
+
+| Action | Wazuh script | Needs | Second confirm |
+|--------|--------------|-------|----------------|
+| `block-ip` | `!firewall-drop` | a source IP + agent id from the incident | no |
+| `disable-user` | `!disable-account` | a username + agent id | **yes** |
+
+The `!` prefix runs the hardened agent script directly (no manager
+`<active-response>` block needed). Everything else stays a manual task.
+
+### `RESPONSE_DRY_RUN` — default **on**
+
+With `RESPONSE_DRY_RUN=true` (the default in `.env.example`), Approve marks the
+task done and writes a **`response_actions_log`** row recording *what would have
+been dispatched* — nothing reaches a host. Every dispatch, dry-run or live, is in
+that log; see it at **`/audit`** or under an incident's "Dispatched actions".
+
+Set `RESPONSE_DRY_RUN=false` **only** when you want approvals to run real
+commands on real machines. Live dispatches are rate-limited
+(`RESPONSE_RATE_LIMIT_SECONDS`, default 30).
+
+### The AR credential
+
+A **separate** least-privilege Manager API user (`:55000`), never the ingestion
+one. Wazuh already ships a built-in policy (`agents_commands_agents`) that grants
+exactly `active-response:command` — attach it to a fresh role + user:
+
+```bash
+API='https://localhost:55000'; H="Authorization: Bearer $(curl -sk -u wazuh-wui:'MyS3cr37P450r.*-' -X POST "$API/security/user/authenticate?raw=true")"
+id() { python3 -c "import sys,json;print(json.load(sys.stdin)['data']['affected_items'][0]['id'])"; }
+AR_PASS='Zuumb.AR.pass1'          # 8+ chars, mixed — and NO '!' (bash history-expands it)
+
+ROLE=$(curl -sk -H "$H" -X POST "$API/security/roles" -H 'Content-Type: application/json' -d '{"name":"zuumb_ar"}' | id)
+curl -sk -H "$H" -X POST "$API/security/roles/$ROLE/policies?policy_ids=6" >/dev/null   # 6 = agents_commands_agents
+USER=$(curl -sk -H "$H" -X POST "$API/security/users" -H 'Content-Type: application/json' -d "{\"username\":\"zuumb-ar\",\"password\":\"$AR_PASS\"}" | id)
+curl -sk -H "$H" -X POST "$API/security/users/$USER/roles?role_ids=$ROLE" >/dev/null
+
+# verify: AR allowed, everything else denied
+ART=$(curl -sk -u "zuumb-ar:$AR_PASS" -X POST "$API/security/user/authenticate?raw=true"); sleep 2
+curl -sk -o /dev/null -w 'PUT /active-response -> %{http_code} (want 200)\n' -H "Authorization: Bearer $ART" \
+  -X PUT "$API/active-response?agents_list=001" -H 'Content-Type: application/json' -d '{"command":"!firewall-drop","arguments":["203.0.113.9"]}'
+curl -sk -o /dev/null -w 'DELETE /agents      -> %{http_code} (want 403)\n' -H "Authorization: Bearer $ART" -X DELETE "$API/agents?agents_list=999&status=all&older_than=0s"
+```
+
+Then in `.env`: `WAZUH_AR_API_URL`, `WAZUH_AR_API_USER=zuumb-ar`, `WAZUH_AR_API_PASSWORD`.
+
 ## Build status
 - **Phase 1** scaffold + infra — done (Wazuh external; infra is Postgres-only).
 - **Phase 2** ingestion (synthetic alert JSON → DB) — done.
@@ -324,3 +374,4 @@ Knobs (both `.env`-overridable):
 - **Phase 10** eval harness (`eval/run_eval.py`, 34-alert labeled set) — done; baseline acc 0.82, +few-shot 0.94 ([eval/RESULTS.md](eval/RESULTS.md)).
 - **Phase 12** live Wazuh ingestion (`app/ingestion/wazuh_client.py` poller + `app/pipeline.py`) — done against a live 4.9.2 stack.
 - **Phase 13** attack chains at scale — `CHAIN_MAX_ENTITY_SPREAD` knob, `scripts/chain_quality.py` diagnostic, container agent lab (`docker/agent/`, `docker-compose.agents.yml`); validation ongoing against real traffic.
+- **Phase 14** human-approved active response — allowlisted Wazuh AR dispatch (`app/response/active_response.py`), approve→dispatch flow with dry-run default + audit log (`app/response/approve.py`, `/audit`); live throwaway-agent test pending.
