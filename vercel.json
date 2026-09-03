@@ -6,6 +6,10 @@
       "use": "@vercel/static"
     },
     {
+      "src": "docs.html",
+      "use": "@vercel/static"
+    },
+    {
       "src": "googlef0d21393cf8ca719.html",
       "use": "@vercel/static"
     },
@@ -21,5 +25,9 @@
       "src": "favicon-dark.png",
       "use": "@vercel/static"
     }
+  ],
+  "routes": [
+    { "src": "/docs", "dest": "/docs.html" },
+    { "handle": "filesystem" }
   ]
 }
