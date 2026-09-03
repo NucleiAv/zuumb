@@ -164,8 +164,8 @@ def test_incident_detail_lists_response_tasks_with_approve():
     html = client.get(f"/incidents/{iid}").text
     assert "Response tasks" in html
     assert "Isolate the affected host from the network" in html
-    assert f'action="/tasks/' in html and "Approve" in html
-    assert "does <strong>not</strong> execute" in html
+    assert 'action="/tasks/' in html and "Approve" in html
+    assert "DRY-RUN" in html and "nothing reaches a host" in html  # dry-run is the default
 
 
 def test_approve_task_marks_done_and_redirects():
@@ -178,6 +178,35 @@ def test_approve_task_marks_done_and_redirects():
     with get_session() as s:
         assert s.get(Task, task.id).status == "done"
     assert client.post("/tasks/999999/approve").status_code == 404
+
+
+def test_action_task_dry_run_logs_and_shows_in_audit():
+    from app.db.models import ResponseActionLog
+    with get_session() as s:
+        raw = json.dumps({"rule": {"mitre": {"id": ["T1110"]}, "groups": ["attack"]},
+                          "agent": {"id": "001", "name": "edge-01"}})
+        a = Alert(wazuh_alert_id="ar1", timestamp=datetime(2026, 8, 28, 14, 0), rule_id="5712",
+                  rule_description="brute force", src_ip="203.0.113.9", raw_json=raw)
+        s.add(a); s.commit(); s.refresh(a)
+        s.add(Verdict(alert_id=a.id, verdict="malicious", confidence=0.9,
+                      reasoning_text="x", model_version="t"))
+        inc = Incident(title="edge-01", severity="high")
+        s.add(inc); s.commit(); s.refresh(inc)
+        s.add(IncidentAlert(incident_id=inc.id, alert_id=a.id)); s.commit()
+        iid = inc.id
+
+    detail = client.get(f"/incidents/{iid}").text
+    assert "block-ip" in detail and "203.0.113.9" in detail  # action tag on the task
+    with get_session() as s:
+        tid = s.exec(select(Task).where(Task.incident_id == iid, Task.action == "block-ip")).one().id
+
+    r = client.post(f"/tasks/{tid}/approve", follow_redirects=False)
+    assert r.status_code == 303
+    with get_session() as s:
+        log = s.exec(select(ResponseActionLog)).one()
+        assert log.dry_run is True and log.ok is True and log.target == "203.0.113.9"
+    audit = client.get("/audit").text
+    assert "Response audit (1)" in audit and "block-ip" in audit and "dry-run" in audit
 
 
 def test_incident_detail_has_verdict_override_form():

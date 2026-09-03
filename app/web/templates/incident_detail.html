@@ -53,25 +53,41 @@
 </table>
 
 <h2 class="section">Response tasks</h2>
-<p class="subtle">Proposed playbook actions. Approving marks a task done — it does <strong>not</strong> execute anything.</p>
+<p class="subtle">
+  {% if dry_run %}
+  <span class="dry-pill">DRY-RUN</span> Approving an action task records the intended dispatch — nothing reaches a host.
+  {% else %}
+  Approving an <b>action</b> task dispatches it to the agent via Wazuh Active Response. Non-action tasks just close.
+  {% endif %}
+</p>
 {% if tasks %}
 <table>
   <thead>
-    <tr><th>Type</th><th>Action</th><th>Priority</th><th>Status</th><th></th></tr>
+    <tr><th>Type</th><th>Task</th><th>Priority</th><th>Status</th><th></th></tr>
   </thead>
   <tbody>
   {% for t in tasks %}
     <tr>
       <td>{{ t.type }}</td>
-      <td>{{ t.title }}</td>
+      <td>
+        {{ t.title }}
+        {% if t.action %}<br><span class="action-tag">⚡ {{ t.action }} → <code>{{ t.action_target }}</code> · agent {{ t.agent_id }}</span>{% endif %}
+      </td>
       <td class="sev-{{ t.priority }}">{{ t.priority }}</td>
       <td>{{ t.status }}</td>
       <td>
-        {% if t.status != 'done' %}
+        {% if t.status == 'done' %}<span class="muted">✓ done</span>
+        {% elif confirm_task == t.id|string %}
+        <form method="post" action="/tasks/{{ t.id }}/approve" style="margin:0">
+          <input type="hidden" name="confirm" value="1">
+          <button class="btn-approve btn-danger" type="submit">Confirm dispatch</button>
+        </form>
+        <span class="muted" style="font-size:11px">destructive — click again to run</span>
+        {% else %}
         <form method="post" action="/tasks/{{ t.id }}/approve" style="margin:0">
           <button class="btn-approve" type="submit">Approve</button>
         </form>
-        {% else %}<span class="muted">✓ done</span>{% endif %}
+        {% endif %}
       </td>
     </tr>
   {% endfor %}
@@ -79,6 +95,27 @@
 </table>
 {% else %}
 <p class="muted">No playbook matched this incident's techniques.</p>
+{% endif %}
+
+{% if dispatches %}
+<h3 class="mini" style="margin-top:1.5rem">Dispatched actions</h3>
+<table>
+  <thead><tr><th>When</th><th>Action</th><th>Target</th><th>Agent</th><th>Mode</th><th>Result</th></tr></thead>
+  <tbody>
+  {% for d in dispatches %}
+    <tr>
+      <td class="muted"><time datetime="{{ d.created_at|isoz }}">{{ d.created_at|isoz }}</time></td>
+      <td>{{ d.action }}</td>
+      <td><code>{{ d.target }}</code></td>
+      <td>{{ d.agent_id }}</td>
+      <td>{{ 'dry-run' if d.dry_run else 'live' }}</td>
+      <td class="{{ 'v-benign' if d.ok else 'v-malicious' }}">
+        {{ 'ok' if d.ok else 'failed' }}{% if d.status_code %} · {{ d.status_code }}{% endif %}
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
 {% endif %}
 {% endblock %}
 

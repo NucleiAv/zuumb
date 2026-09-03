@@ -99,6 +99,11 @@
     color: #fff; background: var(--accent); border: 1px solid var(--accent); border-radius: 4px;
   }
   .btn-approve:hover { filter: brightness(1.08); }
+  .btn-danger { background: var(--sev-high); border-color: var(--sev-high); }
+  .dry-pill { font-size: 10px; font-weight: 700; letter-spacing: .04em; padding: .05rem .35rem;
+    border-radius: 3px; color: #fff; background: var(--sev-medium); }
+  .action-tag { font-size: 11px; color: var(--muted); }
+  .action-tag code { font-size: 11px; }
   details.override summary { font-size: 11px; color: var(--accent); cursor: pointer; }
   details.override form { display: flex; flex-wrap: wrap; gap: .25rem; margin-top: .3rem; }
   details.override select, details.override input, details.override button { font-size: 11px; }
@@ -255,6 +260,7 @@
     {% set path = request.url.path %}
     <a href="/" class="{{ 'active' if path == '/' or path.startswith('/incidents') }}">Incidents</a>
     <a href="/chains" class="{{ 'active' if path.startswith('/chains') }}">Chains</a>
+    <a href="/audit" class="{{ 'active' if path.startswith('/audit') }}">Audit</a>
   </nav>
   <span class="spacer"></span>
   <button id="theme-toggle" type="button" aria-label="Toggle light/dark theme">🌙</button>

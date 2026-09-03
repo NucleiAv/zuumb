@@ -11,6 +11,7 @@ from sqlmodel import select
 
 from app.attack_chain.stitcher import TACTIC_ORDER, _incident_tactics, stage_label
 from app.correlation.engine import entities, incident_severity
+from app.config import settings
 from app.db.models import (
     Alert,
     AnalystFeedback,
@@ -18,6 +19,7 @@ from app.db.models import (
     AttackChainIncident,
     Incident,
     IncidentAlert,
+    ResponseActionLog,
     Task,
     Verdict,
 )
@@ -250,13 +252,32 @@ def incident_detail(request: Request, incident_id: int):
             ).all()
         }
         tasks = propose_for_incident(incident_id, s)  # idempotent: suggests, never executes
+        dispatches = s.exec(
+            select(ResponseActionLog)
+            .where(ResponseActionLog.incident_id == incident_id)
+            .order_by(ResponseActionLog.created_at.desc())
+        ).all()
     rows = []
     for a in alerts:
         v = verdicts.get(a.id)
         rows.append((a, v, overrides.get(v.id) if v else None))
-    return templates.TemplateResponse(
-        request, "incident_detail.html", {"incident": incident, "rows": rows, "tasks": tasks}
-    )
+    return templates.TemplateResponse(request, "incident_detail.html", {
+        "incident": incident, "rows": rows, "tasks": tasks, "dispatches": dispatches,
+        "dry_run": settings.response_dry_run,
+        "confirm_task": request.query_params.get("confirm"),
+    })
+
+
+@router.get("/audit", response_class=HTMLResponse)
+def audit_log(request: Request):
+    """Every approved active-response dispatch, dry-run included."""
+    with get_session() as s:
+        logs = s.exec(
+            select(ResponseActionLog).order_by(ResponseActionLog.created_at.desc())
+        ).all()
+    return templates.TemplateResponse(request, "audit.html", {
+        "logs": logs, "dry_run": settings.response_dry_run,
+    })
 
 
 def _flatten(obj, prefix: str = ""):
