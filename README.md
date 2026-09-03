@@ -359,6 +359,24 @@ curl -sk -o /dev/null -w 'DELETE /agents      -> %{http_code} (want 403)\n' -H "
 
 Then in `.env`: `WAZUH_AR_API_URL`, `WAZUH_AR_API_USER=zuumb-ar`, `WAZUH_AR_API_PASSWORD`.
 
+### Try the flow
+
+`data/synthetic_alerts/ar_demo.jsonl` builds two incidents on `agent-lab-01` —
+one `block-ip` task (single approve) and one `disable-user` task (confirm twice).
+The `agent.id` defaults to `006`; check `agent_control -l` and regenerate if it
+differs:
+
+```bash
+AGENT_ID=<your agent-lab-01 id> python data/synthetic_alerts/gen_ar_demo.py
+python -m scripts.run_poc --offline          # ingest + triage + correlate the synthetic sets
+```
+
+Open the two `host:agent-lab-01` incidents, hit **Approve** on the action tasks,
+watch `/audit`. Dry-run is on by default (nothing dispatched). To do it for
+real: `RESPONSE_DRY_RUN=false` in `.env`, restart, approve again — the
+`firewall-drop` script runs on the container (`iptables -L` inside it shows the
+DROP rule).
+
 ## Build status
 - **Phase 1** scaffold + infra — done (Wazuh external; infra is Postgres-only).
 - **Phase 2** ingestion (synthetic alert JSON → DB) — done.
