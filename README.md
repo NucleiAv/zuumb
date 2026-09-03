@@ -309,7 +309,7 @@ Knobs (both `.env`-overridable):
 | `CORRELATION_WINDOW_MINUTES` | `30` | shrink if noisy traffic over-merges unrelated alerts into one incident |
 | `CHAIN_MAX_ENTITY_SPREAD` | `4` | lower if a busy shared host keeps stitching unrelated incidents together |
 
-## Active response (Phase 14)
+## Automated mitigation (active response, Phase 14)
 
 Approving a response task can dispatch a real command to the agent via Wazuh's
 Active Response API — **but only** from a fixed allowlist, only after a human
@@ -322,6 +322,13 @@ clicks Approve, and only if `RESPONSE_DRY_RUN` is off.
 
 The `!` prefix runs the hardened agent script directly (no manager
 `<active-response>` block needed). Everything else stays a manual task.
+
+**How it flows:** `app/response/playbooks.py` tags a proposed task with an
+`action` when the incident yields a target (ip/user) and an agent id →
+`app/response/approve.py` on Approve either records intent (dry-run) or calls
+`app/response/active_response.py:dispatch()` → `PUT /active-response` with the
+`zuumb-ar` credential → a row in `response_actions_log`, shown at `/audit` and
+under the incident's "Dispatched actions".
 
 ### `RESPONSE_DRY_RUN` — default **on**
 
@@ -359,23 +366,72 @@ curl -sk -o /dev/null -w 'DELETE /agents      -> %{http_code} (want 403)\n' -H "
 
 Then in `.env`: `WAZUH_AR_API_URL`, `WAZUH_AR_API_USER=zuumb-ar`, `WAZUH_AR_API_PASSWORD`.
 
-### Try the flow
+### Try the flow, end to end
 
-`data/synthetic_alerts/ar_demo.jsonl` builds two incidents on `agent-lab-01` —
-one `block-ip` task (single approve) and one `disable-user` task (confirm twice).
-The `agent.id` defaults to `006`; check `agent_control -l` and regenerate if it
-differs:
+`data/synthetic_alerts/ar_demo.jsonl` builds two incidents on `agent-lab-01`: a
+6-alert SSH brute force from `203.0.113.99` → **block-ip** task, and a
+useradd+login by `mallory` → **disable-user** task (confirm twice).
 
-```bash
-AGENT_ID=<your agent-lab-01 id> python data/synthetic_alerts/gen_ar_demo.py
-python -m scripts.run_poc --offline          # ingest + triage + correlate the synthetic sets
+> zuumb and its venv are on Windows — run steps **1–7 in PowerShell from the repo
+> root** (`.venv\Scripts\python.exe`). Docker is under WSL — the `docker exec`
+> checks run **in WSL**. `python -m scripts.run_poc` fails from WSL: wrong
+> interpreter, wrong directory.
+
+**1. (only if `agent-lab-01` isn't id `006`)** — check in WSL with
+`docker exec wazuh49-wazuh.manager-1 /var/ossec/bin/agent_control -l`, then in PowerShell:
+```powershell
+$env:AGENT_ID=<id>; .venv\Scripts\python.exe data\synthetic_alerts\gen_ar_demo.py
 ```
 
-Open the two `host:agent-lab-01` incidents, hit **Approve** on the action tasks,
-watch `/audit`. Dry-run is on by default (nothing dispatched). To do it for
-real: `RESPONSE_DRY_RUN=false` in `.env`, restart, approve again — the
-`firewall-drop` script runs on the container (`iptables -L` inside it shows the
-DROP rule).
+**2. Ingest + correlate** (PowerShell):
+```powershell
+.venv\Scripts\python.exe -m scripts.run_poc --offline
+```
+
+**3. Find the action tasks** (PowerShell):
+```powershell
+.venv\Scripts\python.exe -c "from app.db.session import get_session; from app.db.models import Task; from sqlmodel import select; s=get_session(); [print('incident',t.incident_id,'task',t.id,'->',t.action,t.action_target,'@',t.agent_id) for t in s.exec(select(Task).where(Task.action!=None)).all()]"
+```
+
+**4. Dry-run** — start the app, approve, look at `/audit`:
+```powershell
+.venv\Scripts\python.exe -m uvicorn app.main:app --port 8000
+```
+In the browser open the incident, click **Approve** on the block-ip task (for
+disable-user you'll get a red *Confirm dispatch* — click it again). Or from a
+second PowerShell: `curl.exe -s -X POST http://localhost:8000/tasks/<task-id>/approve`.
+`/audit` shows the row as `dry-run`; nothing reached the host.
+
+**5. Go live** — stop uvicorn (Ctrl+C), then (PowerShell):
+```powershell
+(Get-Content .env) -replace 'RESPONSE_DRY_RUN=true','RESPONSE_DRY_RUN=false' | Set-Content .env
+.venv\Scripts\python.exe -m uvicorn app.main:app --port 8000
+```
+
+**6. Approve the block-ip task again** (browser or `curl.exe` as in step 4).
+`/audit` now shows `live · ok · 200`.
+
+**7. Verify on the agent** (WSL):
+```bash
+docker exec zuumb-agents-agent-lab-01-1 iptables -S | grep 203.0.113.99
+docker exec zuumb-agents-agent-lab-01-1 tail -3 /var/ossec/logs/active-responses.log
+```
+You should see a `-A INPUT -s 203.0.113.99/32 -j DROP` rule and the
+`firewall-drop` invocation.
+
+### Revert
+
+```powershell
+# PowerShell — back to dry-run, then restart uvicorn
+(Get-Content .env) -replace 'RESPONSE_DRY_RUN=false','RESPONSE_DRY_RUN=true' | Set-Content .env
+```
+```bash
+# WSL — the container's iptables isn't persisted; a restart clears the DROP rule
+docker compose -f docker-compose.agents.yml restart agent-lab-01
+```
+The `ar_demo` incidents and the `/audit` rows are harmless history. For a clean
+slate: `Remove-Item zuumb.db` (PowerShell) and re-run step 2 — or keep it and
+`mv zuumb.db` aside if you want the live data back later.
 
 ## Build status
 - **Phase 1** scaffold + infra — done (Wazuh external; infra is Postgres-only).
