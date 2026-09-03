@@ -1,0 +1,24 @@
+# zuumb — contributor stack. Builds the image from local source, live-reloads
+# on edits.  docker compose -f docker-compose.dev.yml up --build
+#
+# Same Wazuh note as docker-compose.yml: point WAZUH_*_API_URL at
+# host.docker.internal in .env.
+
+name: zuumb-dev
+
+services:
+  zuumb:
+    build: .
+    env_file: .env
+    ports:
+      - "8000:8000"
+    volumes:
+      - zuumb-data:/data
+      - ./app:/app/app           # edit app/ and uvicorn --reload picks it up
+      - ./prompts:/app/prompts
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+
+volumes:
+  zuumb-data:

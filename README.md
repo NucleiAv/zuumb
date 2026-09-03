@@ -22,6 +22,30 @@ Built as the next layer on top of prior Wazuh detection-rule work.
 
 ## Quickstart
 
+### With Docker (no local build)
+
+```bash
+git clone https://github.com/NucleiAv/zuumb && cd zuumb
+cp .env.example .env            # fill in ANTHROPIC_API_KEY and the WAZUH_* creds
+docker compose up -d            # pulls ghcr.io/nucleiav/zuumb:latest
+```
+
+Open http://localhost:8000.
+
+- The SQLite database lives in a named volume (`zuumb-data`); nothing else to set up.
+- **Wazuh runs elsewhere.** zuumb reads an existing Wazuh stack — it doesn't start
+  one. In `.env`, point every `WAZUH_*_API_URL` at `host.docker.internal` instead
+  of `localhost` (the compose file already maps that name to the host).
+- **Active response ships in dry-run** (`RESPONSE_DRY_RUN=true`): approving a
+  response task records what *would* have run and dispatches nothing. Only set it
+  to `false` once you understand it will run real `firewall-drop` /
+  `disable-account` commands on your agents — see
+  [Automated mitigation](#automated-mitigation-active-response-phase-14).
+- Contributors who want to build from source and live-reload:
+  `docker compose -f docker-compose.dev.yml up --build`.
+
+### From source
+
 ```bash
 cp .env.example .env           # then put your ANTHROPIC_API_KEY in .env
 
@@ -575,6 +599,29 @@ Remove-Item zuumb.db; Rename-Item zuumb.db.bak zuumb.db
 ```
 It's back in dry-run. The `/audit` rows stay — that history is intentional.
 
+## Publishing a release (maintainers)
+
+Images are built and pushed by `.github/workflows/publish.yml` — no secrets to
+set, it uses the repo's automatic `GITHUB_TOKEN`.
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+The workflow builds `linux/amd64` + `linux/arm64` and pushes
+`ghcr.io/nucleiav/zuumb` tagged `0.1.0` **and** `latest`.
+
+**One manual step after the first publish:** GHCR packages default to *private*
+even on a public repo. Go to the repo → **Packages** → `zuumb` → **Package
+settings** → **Change visibility** → **Public**. Skip this and `docker compose
+up` fails for everyone but you.
+
+The `Dockerfile` is multi-stage (deps in a build stage, only the venv + `app/`,
+`prompts/`, `scripts/`, `eval/`, `data/synthetic_alerts/` in the runtime layer),
+runs as a non-root user, and carries no dev tooling or bind mounts. `.dockerignore`
+keeps `.env`, `*.db`, the landing page, and the planning docs out of the image.
+
 ## Build status
 - **Phase 1** scaffold + infra — done (Wazuh external; infra is Postgres-only).
 - **Phase 2** ingestion (synthetic alert JSON → DB) — done.
@@ -590,4 +637,5 @@ It's back in dry-run. The `/audit` rows stay — that history is intentional.
 - **Phase 10** eval harness (`eval/run_eval.py`, 34-alert labeled set) — done; baseline acc 0.82, +few-shot 0.94 ([eval/RESULTS.md](eval/RESULTS.md)).
 - **Phase 12** live Wazuh ingestion (`app/ingestion/wazuh_client.py` poller + `app/pipeline.py`) — done against a live 4.9.2 stack.
 - **Phase 13** attack chains at scale — `CHAIN_MAX_ENTITY_SPREAD` knob, `scripts/chain_quality.py` diagnostic, container agent lab (`docker/agent/`, `docker-compose.agents.yml`); validation ongoing against real traffic.
-- **Phase 14** human-approved active response — allowlisted Wazuh AR dispatch (`app/response/active_response.py`), approve→dispatch flow with dry-run default + audit log (`app/response/approve.py`, `/audit`); live throwaway-agent test pending.
+- **Phase 14** human-approved active response — allowlisted Wazuh AR dispatch (`app/response/active_response.py`), approve→dispatch flow with dry-run default + audit log (`app/response/approve.py`, `/audit`); verified live against a throwaway agent (real iptables DROP rule).
+- **Phase 15** public Docker distribution — multi-stage `Dockerfile`, `.github/workflows/publish.yml` (multi-arch → GHCR on `v*.*.*`), `docker-compose.yml` (pull) + `docker-compose.dev.yml` (build).
