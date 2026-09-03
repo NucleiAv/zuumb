@@ -137,4 +137,4 @@ def test_dispatch_puts_one_ar_call_with_the_mapped_command():
     assert out == {"ok": True, "status_code": 200, "text": _Resp.text}
     put = next(x for x in c.calls if x[0] == "PUT")
     assert "agents_list=001" in put[1]
-    assert put[2]["command"] == "firewall-drop" and put[2]["arguments"] == ["203.0.113.9"]
+    assert put[2]["command"] == "!firewall-drop" and put[2]["arguments"] == ["203.0.113.9"]

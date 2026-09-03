@@ -12,12 +12,13 @@ import httpx
 
 from app.config import settings
 
-# Allowlisted actions -> the Wazuh AR command (all shipped + registered on 4.9).
+# Allowlisted actions -> the Wazuh AR script (all ship on the 4.9 agent). The `!`
+# prefix runs the named script directly, no manager <active-response> block needed.
 # `confirm` actions need a second explicit confirmation before they dispatch.
 ACTIONS: dict[str, dict] = {
-    "block-ip": {"command": "firewall-drop", "target": "ip", "confirm": False,
+    "block-ip": {"command": "!firewall-drop", "target": "ip", "confirm": False,
                  "label": "Block source IP (firewall-drop)"},
-    "disable-user": {"command": "disable-account", "target": "user", "confirm": True,
+    "disable-user": {"command": "!disable-account", "target": "user", "confirm": True,
                      "label": "Disable account (disable-account)"},
 }
 
