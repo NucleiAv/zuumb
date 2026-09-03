@@ -1,26 +1,41 @@
-# zuumb local infra.
+# zuumb — end-user stack. Pulls the published image; no local build.
 #
-# Wazuh is NOT defined here — this project expects an existing Wazuh single-node
-# stack (you have `single-node-*` v5.0.0-beta4 running via WSL Docker). If you
-# don't have one:  git clone https://github.com/wazuh/wazuh-docker
+#   cp .env.example .env      # fill in ANTHROPIC_API_KEY + the WAZUH_* creds
+#   docker compose up -d
+#   open http://localhost:8000
 #
-# POC uses SQLite (DATABASE_URL default), so this file is only needed for the
-# MVP once you switch DATABASE_URL to Postgres.
+# Wazuh is NOT run here — zuumb reads an EXISTING Wazuh stack. In .env point the
+# WAZUH_*_API_URL values at `host.docker.internal` (not `localhost`) so the
+# container can reach Wazuh running on the host.
 #
-#   docker compose up -d postgres
+# Optional Postgres instead of the bundled SQLite:  docker compose --profile pg up -d
+# then set  DATABASE_URL=postgresql://zuumb:zuumb@postgres:5432/zuumb  in .env
+
+name: zuumb
 
 services:
+  zuumb:
+    image: ghcr.io/nucleiav/zuumb:latest
+    env_file: .env
+    ports:
+      - "8000:8000"
+    volumes:
+      - zuumb-data:/data          # the SQLite db lives here (DATABASE_URL default)
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+
   postgres:
     image: postgres:16-alpine
-    restart: unless-stopped
+    profiles: ["pg"]
     environment:
-      POSTGRES_USER: aisoc
-      POSTGRES_PASSWORD: aisoc
-      POSTGRES_DB: aisoc
-    ports:
-      - "5432:5432"
+      POSTGRES_USER: zuumb
+      POSTGRES_PASSWORD: zuumb
+      POSTGRES_DB: zuumb
     volumes:
       - postgres-data:/var/lib/postgresql/data
+    restart: unless-stopped
 
 volumes:
+  zuumb-data:
   postgres-data:

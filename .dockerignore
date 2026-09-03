@@ -1,0 +1,37 @@
+# keep the build context small and secrets out of the image
+.git
+.github
+.venv
+venv
+.claude
+__pycache__
+**/__pycache__
+*.pyc
+.pytest_cache
+
+.env
+.env.local
+*.db
+*.db.*
+*.bak
+*.orig
+scratch_*
+
+tests
+conftest.py
+docker
+docker-compose*.yml
+Dockerfile
+.dockerignore
+
+# landing page + planning docs — not part of the service
+index.html
+vercel.json
+assets
+favicon*.png
+favicon.ico
+google*.html
+CLAUDE.md
+zuumb-buildplan*.md
+*.md
+!prompts/*.md
