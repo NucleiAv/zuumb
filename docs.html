@@ -1,0 +1,728 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>zuumb documentation</title>
+<meta name="description" content="How zuumb works, how to install it, how to connect a live Wazuh stack, and how the human-approved response layer behaves.">
+<link rel="icon" href="/favicon.ico" sizes="any">
+<link rel="icon" type="image/png" href="/favicon-light.png" media="(prefers-color-scheme: light)">
+<link rel="icon" type="image/png" href="/favicon-dark.png" media="(prefers-color-scheme: dark)">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:ital,wght@0,400..900;1,400..900&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<script>
+  (function () {
+    try {
+      var saved = localStorage.getItem("zuumb-theme");
+      var t = saved || (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+      document.documentElement.dataset.theme = t;
+    } catch (e) {}
+  })();
+</script>
+<style>
+  :root {
+    --bg:#ffffff;--surface:#f6f8fd;--surface-2:#eaf0fc;
+    --fg:#000000;--fg-2:#12161f;--muted:#4d5566;--faint:#7d8698;
+    --line:#e2e7f2;--line-strong:#c9d3e8;
+    --accent:#1952e9;--accent-deep:#0f37a3;--accent-soft:#dbe5fb;--on-accent:#ffffff;
+    --scrim:rgba(25,82,233,.07);
+    --sev-high:#d92d3a;--sev-med:#c07709;--sev-low:#1f8a52;
+  }
+  html[data-theme="dark"] {
+    --bg:#000000;--surface:#070a12;--surface-2:#0d1220;
+    --fg:#ffffff;--fg-2:#e8ecf5;--muted:#9aa4b8;--faint:#6b7488;
+    --line:#1a2030;--line-strong:#2b3348;
+    --accent:#5B8DEF;--accent-deep:#8fb2f6;--accent-soft:#132039;--on-accent:#000000;
+    --scrim:rgba(91,141,239,.12);
+    --sev-high:#ff6b70;--sev-med:#e0a03c;--sev-low:#3ecf8e;
+  }
+  * { box-sizing:border-box; }
+  html { scroll-behavior:smooth; scroll-padding-top:88px; background:var(--bg); }
+  body {
+    margin:0; background:var(--bg); color:var(--fg);
+    font-family:"IBM Plex Sans",system-ui,sans-serif; -webkit-font-smoothing:antialiased;
+    line-height:1.65;
+  }
+  a { color:var(--accent); text-decoration:none; }
+  a:hover { color:var(--fg); }
+  code, pre, kbd { font-family:"IBM Plex Mono",ui-monospace,monospace; }
+
+  header.bar {
+    position:sticky; top:0; z-index:50; backdrop-filter:blur(14px);
+    background:color-mix(in srgb, var(--bg) 82%, transparent);
+    border-bottom:1px solid var(--line);
+  }
+  header.bar .inner {
+    max-width:1200px; margin:0 auto; padding:0 clamp(16px,4vw,28px);
+    height:68px; display:flex; align-items:center; gap:20px;
+  }
+  .wordmark {
+    font-family:Archivo,sans-serif; font-style:italic; font-weight:900;
+    font-size:24px; letter-spacing:-.05em; color:var(--fg);
+  }
+  .bar nav { margin-left:auto; display:flex; align-items:center; gap:22px; font-size:14px; }
+  .bar nav a { color:var(--muted); }
+  .bar nav a:hover { color:var(--fg); }
+  .toggle {
+    width:36px; height:36px; display:grid; place-items:center;
+    border:1px solid var(--line); background:transparent; color:var(--fg);
+    border-radius:8px; cursor:pointer; font-size:13px; font-family:"IBM Plex Mono",monospace;
+  }
+  .toggle:hover { border-color:var(--accent); color:var(--accent); }
+
+  .layout {
+    max-width:1200px; margin:0 auto; padding:0 clamp(16px,4vw,28px);
+    display:grid; grid-template-columns:244px minmax(0,1fr); gap:48px;
+    align-items:start;
+  }
+  aside.side {
+    position:sticky; top:68px; align-self:start;
+    max-height:calc(100vh - 68px); overflow-y:auto;
+    padding:32px 0 48px; font-size:14px;
+  }
+  aside.side details { display:none; }
+  aside.side .group { margin-bottom:22px; }
+  aside.side .group-title {
+    font-family:"IBM Plex Mono",monospace; font-size:11px; letter-spacing:.14em;
+    text-transform:uppercase; color:var(--faint); margin-bottom:10px;
+  }
+  aside.side ul { list-style:none; margin:0; padding:0; display:grid; gap:2px; }
+  aside.side li a {
+    display:block; padding:6px 12px; border-radius:7px; color:var(--muted);
+    border-left:2px solid transparent;
+  }
+  aside.side li a:hover { color:var(--fg); background:var(--surface); }
+  aside.side li a.active {
+    color:var(--fg); border-left-color:var(--accent); background:var(--surface);
+  }
+
+  main.doc { padding:40px 0 96px; min-width:0; }
+  main.doc > .lede { max-width:70ch; }
+  .kicker {
+    font-family:"IBM Plex Mono",monospace; font-size:12px; letter-spacing:.14em;
+    text-transform:uppercase; color:var(--faint);
+  }
+  h1 {
+    font-family:Archivo,sans-serif; font-style:italic; font-weight:800;
+    letter-spacing:-.03em; line-height:1; margin:14px 0 0;
+    font-size:clamp(34px,5vw,52px);
+  }
+  h2 {
+    font-family:Archivo,sans-serif; font-style:italic; font-weight:800;
+    letter-spacing:-.03em; line-height:1.05; margin:64px 0 0;
+    font-size:clamp(24px,3.4vw,34px); scroll-margin-top:88px;
+    padding-top:22px; border-top:1px solid var(--line);
+  }
+  h3 {
+    font-family:"IBM Plex Sans",sans-serif; font-weight:600;
+    font-size:18px; margin:36px 0 0; color:var(--fg-2);
+  }
+  p, ul.body, ol.body { max-width:72ch; }
+  main.doc p { margin:16px 0 0; }
+  main.doc ul.body, main.doc ol.body { margin:14px 0 0; padding-left:22px; }
+  main.doc ul.body li, main.doc ol.body li { margin:7px 0 0; }
+  .muted { color:var(--muted); }
+
+  pre {
+    margin:18px 0 0; padding:16px 18px; overflow-x:auto;
+    background:var(--surface); border:1px solid var(--line); border-radius:10px;
+    font-size:13px; line-height:1.6;
+  }
+  :not(pre) > code {
+    background:var(--surface-2); border:1px solid var(--line);
+    padding:1px 6px; border-radius:5px; font-size:.9em;
+  }
+  pre code { background:none; border:0; padding:0; font-size:inherit; }
+
+  table.t { width:100%; border-collapse:collapse; margin:20px 0 0; font-size:14px; }
+  table.t th, table.t td {
+    text-align:left; padding:10px 14px; border:1px solid var(--line); vertical-align:top;
+  }
+  table.t th { background:var(--surface-2); font-weight:600; }
+  table.t td code { white-space:nowrap; }
+
+  .note {
+    margin:22px 0 0; padding:16px 18px; border:1px solid var(--line-strong);
+    border-left:3px solid var(--accent); border-radius:10px; background:var(--surface);
+    font-size:14.5px;
+  }
+  .note.warn { border-left-color:var(--sev-high); }
+  .note .tag {
+    font-family:"IBM Plex Mono",monospace; font-size:11px; letter-spacing:.12em;
+    text-transform:uppercase; color:var(--faint); display:block; margin-bottom:6px;
+  }
+
+  footer.foot {
+    border-top:1px solid var(--line); margin-top:40px;
+  }
+  footer.foot .inner {
+    max-width:1200px; margin:0 auto; padding:36px clamp(16px,4vw,28px);
+    display:flex; flex-wrap:wrap; align-items:center; gap:18px;
+    font-size:14px; color:var(--muted);
+  }
+  footer.foot .wordmark { font-size:20px; }
+
+  @media (max-width:940px) {
+    .layout { grid-template-columns:1fr; gap:0; }
+    .bar nav a.navlink { display:none; }
+    aside.side {
+      position:static; max-height:none; overflow:visible; padding:20px 0 0;
+    }
+    aside.side .group { display:none; }
+    aside.side details { display:block; }
+    aside.side details[open] .group { display:block; }
+    aside.side details summary {
+      cursor:pointer; padding:12px 14px; border:1px solid var(--line);
+      border-radius:9px; font-weight:600; list-style:none;
+    }
+    aside.side details summary::-webkit-details-marker { display:none; }
+    aside.side details[open] summary { margin-bottom:16px; }
+    aside.side details .group:first-of-type { margin-top:0; }
+    main.doc { padding-top:26px; }
+  }
+</style>
+</head>
+<body>
+
+<header class="bar">
+  <div class="inner">
+    <a class="wordmark" href="/">zuumb</a>
+    <nav>
+      <a class="navlink" href="/#problem">Problem</a>
+      <a class="navlink" href="/#architecture">Architecture</a>
+      <a class="navlink" href="/#features">Features</a>
+      <a href="/docs" style="color:var(--fg)">Docs</a>
+      <a class="navlink" href="https://github.com/NucleiAv/zuumb/" target="_blank" rel="noreferrer">GitHub</a>
+      <button class="toggle" type="button" aria-label="Toggle color theme" data-theme-toggle>&#9788;</button>
+    </nav>
+  </div>
+</header>
+
+<div class="layout">
+
+  <aside class="side">
+    <details>
+      <summary>Documentation menu</summary>
+    </details>
+
+    <div class="group">
+      <div class="group-title">Start here</div>
+      <ul>
+        <li><a href="#introduction">Introduction</a></li>
+        <li><a href="#how-it-works">How it works</a></li>
+        <li><a href="#requirements">Requirements</a></li>
+      </ul>
+    </div>
+    <div class="group">
+      <div class="group-title">Install and run</div>
+      <ul>
+        <li><a href="#install">Install</a></li>
+        <li><a href="#configuration">Configuration</a></li>
+        <li><a href="#live-wazuh">Connecting a live Wazuh</a></li>
+        <li><a href="#agents">Adding agents</a></li>
+      </ul>
+    </div>
+    <div class="group">
+      <div class="group-title">Features</div>
+      <ul>
+        <li><a href="#dashboard">The dashboard</a></li>
+        <li><a href="#attack-chains">Attack chains and tuning</a></li>
+        <li><a href="#active-response">Automated mitigation</a></li>
+        <li><a href="#evaluation">Evaluation</a></li>
+      </ul>
+    </div>
+    <div class="group">
+      <div class="group-title">Reference</div>
+      <ul>
+        <li><a href="#compatibility">Compatibility</a></li>
+        <li><a href="#roadmap">Roadmap</a></li>
+      </ul>
+    </div>
+  </aside>
+
+  <main class="doc">
+    <div class="lede">
+      <div class="kicker">zuumb documentation</div>
+      <h1>An AI-native layer<br>on top of Wazuh.</h1>
+      <p class="muted">zuumb reads every Wazuh alert as it lands, scores it, links related activity
+      across hosts and time, stitches the survivors into attack chains, and hands an analyst a
+      short list of things that actually matter. This is the reference for running it.</p>
+    </div>
+
+    <h2 id="introduction">Introduction</h2>
+    <p>A single mid-size Wazuh deployment produces more alerts in a day than an analyst can read
+    in a week. Most are noise, a few are the start of something, and the difference is buried in
+    correlation nobody has time to do by hand. So the queue gets skimmed, then ignored, then
+    muted.</p>
+    <p>zuumb sits between the Wazuh indexer and the analyst. It does not replace Wazuh, change
+    agents, or rewrite rules. It reads the alert stream Wazuh already produces and turns it into
+    a small, ranked list of incidents with the reasoning attached.</p>
+
+    <h3>What zuumb is not</h3>
+    <ul class="body">
+      <li>It is not a SIEM. Wazuh stays the system of record.</li>
+      <li>It is not an autonomous responder. Every containment action is proposed, then waits for
+      a person. See <a href="#active-response">Automated mitigation</a>.</li>
+      <li>It is not built for scale testing. The whole thing runs on Docker Compose with SQLite
+      or a single Postgres. No Kafka, no clustering.</li>
+    </ul>
+
+    <h2 id="how-it-works">How it works</h2>
+    <p>One pipeline, five stages. Each stage takes the output of the one before it.</p>
+
+    <table class="t">
+      <thead><tr><th>Stage</th><th>Input to output</th><th>What happens</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><strong>Ingestion</strong></td>
+          <td>Wazuh to queue</td>
+          <td>Alerts are pulled from the Wazuh indexer as they fire and normalised into one
+          common event shape, with host, user, and asset context attached.</td>
+        </tr>
+        <tr>
+          <td><strong>Triage</strong></td>
+          <td>queue to score</td>
+          <td>Each event goes through an LLM triage agent that returns a verdict of benign,
+          suspicious, or malicious, a confidence value, a plain-language rationale, and a guess
+          at the MITRE technique. Anything ambiguous is escalated rather than dropped.</td>
+        </tr>
+        <tr>
+          <td><strong>Correlation</strong></td>
+          <td>score to clusters</td>
+          <td>Events that share a host, an account, or a source IP inside a time window are
+          grouped into one incident, so a credential spray on one machine and a new service on
+          another stop looking like two unrelated tickets.</td>
+        </tr>
+        <tr>
+          <td><strong>Chains</strong></td>
+          <td>clusters to incidents</td>
+          <td>Related incidents are ordered by MITRE tactic sequence into an attack chain, so the
+          story reads from entry to escalation to movement instead of a pile of timestamps.</td>
+        </tr>
+        <tr>
+          <td><strong>Response</strong></td>
+          <td>incidents to tasks</td>
+          <td>Each incident produces proposed response tasks with the evidence behind them. A
+          person approves before anything runs. See <a href="#active-response">Automated
+          mitigation</a>.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>The feedback loop</h3>
+    <p>When an analyst overrides a verdict in the dashboard, that correction is stored. The next
+    triage prompt includes the last few overrides as worked examples, so the noise floor drops as
+    the deployment is used. The effect is measured, not assumed. See
+    <a href="#evaluation">Evaluation</a>.</p>
+
+    <h2 id="requirements">Requirements</h2>
+    <table class="t">
+      <thead><tr><th>Need</th><th>For</th></tr></thead>
+      <tbody>
+        <tr><td>Python 3.11 or newer</td><td>Running zuumb from source.</td></tr>
+        <tr><td>An Anthropic API key</td><td>The triage agent. This is the only paid dependency.
+        Get one at <a href="https://platform.claude.com" target="_blank" rel="noreferrer">platform.claude.com</a>.
+        Triage runs on Claude Haiku 4.5 by default and a batch of a few hundred synthetic alerts
+        costs a few dollars.</td></tr>
+        <tr><td>Docker</td><td>Running the published container, or standing up a local Wazuh
+        stack. Optional if you only run from source against synthetic alerts.</td></tr>
+        <tr><td>A Wazuh 4.9.x single-node stack</td><td>Live polling only. zuumb does not ship
+        Wazuh. See <a href="#live-wazuh">Connecting a live Wazuh</a>.</td></tr>
+      </tbody>
+    </table>
+    <p class="muted">Triage calls are mockable, so the test suite and the offline demo run with no
+    API key and no network.</p>
+
+    <h2 id="install">Install</h2>
+
+    <h3>With Docker</h3>
+    <p>No local build. This pulls the published image from the GitHub Container Registry.</p>
+    <pre><code>git clone https://github.com/NucleiAv/zuumb &amp;&amp; cd zuumb
+cp .env.example .env            # fill in ANTHROPIC_API_KEY and the WAZUH_* creds
+docker compose up -d            # pulls ghcr.io/nucleiav/zuumb:latest</code></pre>
+    <p>Open <code>http://localhost:8000</code>. The SQLite database lives in a named volume
+    called <code>zuumb-data</code>, so there is nothing else to set up.</p>
+    <div class="note">
+      <span class="tag">Reaching Wazuh from the container</span>
+      Inside the container, <code>localhost</code> is the container, not your machine. In
+      <code>.env</code>, point every <code>WAZUH_*_API_URL</code> at
+      <code>host.docker.internal</code> instead of <code>localhost</code>. The compose file
+      already maps that name to the host.
+    </div>
+    <p>Contributors who want to build from source and live-reload can use the dev compose file:</p>
+    <pre><code>docker compose -f docker-compose.dev.yml up --build</code></pre>
+
+    <h3>From source</h3>
+    <pre><code>cp .env.example .env           # then put your ANTHROPIC_API_KEY in .env
+
+python -m venv .venv
+. .venv/Scripts/activate       # Windows;  ".venv/bin/activate" on macOS or Linux
+pip install -r requirements.txt
+pytest -q</code></pre>
+    <p>Run it on the bundled synthetic Wazuh alerts. No live Wazuh, no Docker. SQLite is created
+    automatically.</p>
+    <pre><code>python -m scripts.run_poc [--offline]
+.venv/Scripts/python -m uvicorn app.main:app --reload   # http://localhost:8000</code></pre>
+    <p><code>--offline</code> swaps the LLM triage agent for a keyword scorer, so the demo runs
+    with no API key. For a live feed, work through
+    <a href="#live-wazuh">Connecting a live Wazuh</a> and then set
+    <code>WAZUH_LIVE_POLLING=true</code>.</p>
+
+    <h2 id="configuration">Configuration</h2>
+    <p>All settings come from environment variables, read from <code>.env</code> at the repo root.
+    <code>.env</code> is gitignored. <code>.env.example</code> holds placeholders only.</p>
+
+    <h3>Anthropic</h3>
+    <table class="t">
+      <thead><tr><th>Variable</th><th>Default</th><th>Meaning</th></tr></thead>
+      <tbody>
+        <tr><td><code>ANTHROPIC_API_KEY</code></td><td>placeholder</td><td>Your key. Required for
+        real triage.</td></tr>
+        <tr><td><code>ANTHROPIC_MODEL</code></td><td><code>claude-haiku-4-5-20251001</code></td>
+        <td>The triage model. Set as an env var so swapping it is a one-line change.</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Wazuh indexer, for live ingestion</h3>
+    <table class="t">
+      <thead><tr><th>Variable</th><th>Default</th><th>Meaning</th></tr></thead>
+      <tbody>
+        <tr><td><code>WAZUH_API_URL</code></td><td><code>https://localhost:9200</code></td>
+        <td>The indexer, where <code>wazuh-alerts-*</code> lives. Not the Manager API on 55000.</td></tr>
+        <tr><td><code>WAZUH_API_USER</code></td><td><code>zuumb-ingest</code></td>
+        <td>A dedicated read-only OpenSearch user. Never <code>admin</code>.</td></tr>
+        <tr><td><code>WAZUH_API_PASSWORD</code></td><td><code>changeme</code></td><td>Its password.</td></tr>
+        <tr><td><code>WAZUH_VERIFY_SSL</code></td><td><code>false</code></td><td>Set true once the
+        indexer has a certificate your host trusts.</td></tr>
+        <tr><td><code>WAZUH_ALERTS_INDEX</code></td><td><code>wazuh-alerts-*</code></td><td>The
+        index pattern to read.</td></tr>
+        <tr><td><code>WAZUH_LIVE_POLLING</code></td><td><code>false</code></td><td>When true,
+        <code>app.main</code> starts a background poller on startup. The first cycle fires at
+        once.</td></tr>
+        <tr><td><code>WAZUH_POLL_SECONDS</code></td><td><code>60</code></td><td>Seconds between
+        poll cycles.</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Database</h3>
+    <table class="t">
+      <thead><tr><th>Variable</th><th>Default</th><th>Meaning</th></tr></thead>
+      <tbody>
+        <tr><td><code>DATABASE_URL</code></td><td><code>sqlite:///./zuumb.db</code></td>
+        <td>A local SQLite file by default. For Postgres, run <code>docker compose up -d
+        postgres</code> and set this to that connection string.</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Correlation and attack chains</h3>
+    <table class="t">
+      <thead><tr><th>Variable</th><th>Default</th><th>When to change</th></tr></thead>
+      <tbody>
+        <tr><td><code>CORRELATION_WINDOW_MINUTES</code></td><td><code>30</code></td><td>Shrink if
+        noisy traffic over-merges unrelated alerts into one incident.</td></tr>
+        <tr><td><code>CHAIN_MAX_ENTITY_SPREAD</code></td><td><code>4</code></td><td>Lower if a
+        busy shared host, like a proxy or jump box, keeps stitching unrelated incidents
+        together.</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Active response</h3>
+    <table class="t">
+      <thead><tr><th>Variable</th><th>Default</th><th>Meaning</th></tr></thead>
+      <tbody>
+        <tr><td><code>WAZUH_AR_API_URL</code></td><td><code>https://localhost:55000</code></td>
+        <td>The Wazuh Manager API, used only to dispatch active response.</td></tr>
+        <tr><td><code>WAZUH_AR_API_USER</code></td><td><code>zuumb-ar</code></td><td>A separate
+        least-privilege Manager user. Not the ingestion credential. See
+        <a href="#active-response">Automated mitigation</a>.</td></tr>
+        <tr><td><code>WAZUH_AR_API_PASSWORD</code></td><td><code>changeme</code></td><td>Its password.</td></tr>
+        <tr><td><code>RESPONSE_DRY_RUN</code></td><td><code>true</code></td><td>Practice mode.
+        Approving a response task records the intent and touches nothing. Leave it true until you
+        are certain what turning it off means for your environment.</td></tr>
+        <tr><td><code>RESPONSE_RATE_LIMIT_SECONDS</code></td><td><code>30</code></td><td>Minimum
+        gap between two live dispatches.</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="live-wazuh">Connecting a live Wazuh</h2>
+    <p>zuumb reads alerts from an existing stack's indexer. The full copy-and-paste walkthrough,
+    including standing up a Wazuh 4.9.2 single-node stack under Docker, lives in the
+    <a href="https://github.com/NucleiAv/zuumb#live-wazuh-49x" target="_blank" rel="noreferrer">project README</a>.
+    The shape of it is four steps.</p>
+    <ol class="body">
+      <li>Stand up or point at a Wazuh 4.9.x single-node stack. The indexer answers on port 9200.</li>
+      <li>Create a read-only ingestion user on the indexer's OpenSearch security API, scoped to
+      read and search on <code>wazuh-alerts-*</code> and nothing else. Confirm that a write is
+      refused.</li>
+      <li>Enrol at least one agent so alerts are actually landing. A
+      <code>wazuh-alerts-4.x-*</code> index with a non-zero document count means the feed is
+      live.</li>
+      <li>Put the indexer URL and the ingestion credential in <code>.env</code>, set
+      <code>WAZUH_LIVE_POLLING=true</code>, and start the app.</li>
+    </ol>
+    <p>The console logs each cycle. The first run triages the whole backlog in batches, so
+    incidents and charts fill in progressively.</p>
+    <div class="note">
+      <span class="tag">Two credentials, not one</span>
+      Ingestion uses a read-only indexer user. Active response, if you enable it, uses a separate
+      Manager user scoped to active-response only. Reusing one over-privileged account for both is
+      the exact smell a detection-and-response tool should not have.
+    </div>
+
+    <h2 id="agents">Adding agents</h2>
+    <p>Attack chains only form when activity spans more than one source, so zuumb wants several
+    agents reporting. There are two ways to add them.</p>
+
+    <h3>Container agents, the multi-host lab</h3>
+    <p>There is no <code>wazuh/wazuh-agent</code> image for 4.9.x, so <code>docker/agent/</code>
+    builds one from the official package. <code>docker-compose.agents.yml</code> runs two of
+    them, <code>agent-lab-01</code> and <code>agent-lab-02</code>. Run every
+    <code>docker compose -f docker-compose.agents.yml</code> command from the repo root.</p>
+    <pre><code># the Wazuh stack must be up first, it owns the network the agents join
+docker compose -f docker-compose.agents.yml up -d --build</code></pre>
+    <ul class="body">
+      <li>They join the manager's network and enrol automatically on first start.</li>
+      <li>Each keeps its enrolment key in a volume, so restart and recreate reconnect instead of
+      re-enrolling. To force a clean re-enrol, run the same command with <code>down -v</code>.</li>
+      <li><code>LAB_NOISE=1</code> seeds realistic sshd auth-failure traffic with rotating source
+      IPs so the pipeline has data while real traffic builds. Remove it when the agents monitor
+      real hosts.</li>
+      <li>To add a third agent, copy a service block in
+      <code>docker-compose.agents.yml</code>, give it a new <code>hostname</code> and its own
+      volume, then bring the file up again.</li>
+    </ul>
+
+    <h3>A real host</h3>
+    <p>Install the Wazuh 4.9.x agent from
+    <a href="https://packages.wazuh.com/4.x/" target="_blank" rel="noreferrer">packages.wazuh.com</a>,
+    set <code>WAZUH_MANAGER</code> to the manager's address and <code>WAZUH_AGENT_NAME</code> to
+    something distinct, and start the service. The first start auto-enrols against the manager's
+    <code>authd</code> on port 1515.</p>
+
+    <h3>Checking how many agents are running</h3>
+    <pre><code># canonical count from the Manager API: active / disconnected / never_connected / total
+TOKEN=$(curl -sk -u wazuh-wui:'MyS3cr37P450r.*-' -X POST \
+  "https://localhost:55000/security/user/authenticate?raw=true")
+curl -sk -H "Authorization: Bearer $TOKEN" "https://localhost:55000/agents/summary/status"</code></pre>
+    <p>A stuck "Never connected" agent has a key but cannot reach the manager on
+    <code>1514/tcp</code>. Check the address it is using and that the port is published.</p>
+
+    <h2 id="dashboard">The dashboard</h2>
+    <p>Served by the app on port 8000. It is server-rendered, with a light and dark theme that
+    follows your system setting and remembers a manual choice.</p>
+    <table class="t">
+      <thead><tr><th>View</th><th>Shows</th></tr></thead>
+      <tbody>
+        <tr><td>Incidents list</td><td>Every incident with severity, host, alert count, stage,
+        and status. Paginated at 50 per page. KPI cards and charts across the top, all clickable
+        to filter. Time-range chips and a custom date range.</td></tr>
+        <tr><td>Incident detail</td><td>The constituent alerts with their verdict, confidence,
+        MITRE guess, and reasoning. Long incidents cap the alert table with a link to show the
+        rest. Below it, the proposed response tasks and any dispatched actions.</td></tr>
+        <tr><td>Chains</td><td>Correlated incidents ordered by tactic stage, with the entities
+        that join each pair of adjacent stages.</td></tr>
+        <tr><td>Audit</td><td>One row per Approve click, dry-run and live alike: what, where,
+        who, when, and the result.</td></tr>
+      </tbody>
+    </table>
+    <p>Charts are exportable to CSV from the panel menu. The time series and the hour-by-weekday
+    heatmap bucket in the viewer's own timezone.</p>
+
+    <h2 id="attack-chains">Attack chains and tuning</h2>
+    <p>The stitcher is data-source agnostic, so real traffic needs validation more than new code.
+    Let live data accumulate for a few days, then check chain quality.</p>
+    <pre><code>python -m scripts.chain_quality</code></pre>
+    <p>It prints, per chain, the entities that join each pair of adjacent stages, and flags two
+    false-chain shapes.</p>
+    <table class="t">
+      <thead><tr><th>Flag</th><th>Meaning</th></tr></thead>
+      <tbody>
+        <tr><td><code>hub-host</code></td><td>Every link is one shared host, like a proxy or jump
+        box. That is a busy machine, not an attack path.</td></tr>
+        <tr><td><code>weak-link</code></td><td>Adjacent stages share no entity directly. The
+        chain was stitched only transitively and is worth a second look.</td></tr>
+      </tbody>
+    </table>
+    <p>Tune with <code>CORRELATION_WINDOW_MINUTES</code> and <code>CHAIN_MAX_ENTITY_SPREAD</code>
+    from the <a href="#configuration">configuration</a> table.</p>
+
+    <h2 id="active-response">Automated mitigation</h2>
+    <p>zuumb groups alerts into incidents and, for each incident, suggests response tasks like
+    "block that IP" or "lock that account". A person can click one button and have zuumb carry
+    the task out on the affected machine, by asking Wazuh to do it, never by running commands
+    itself.</p>
+
+    <h3>Three things are always true</h3>
+    <ul class="body">
+      <li>Nothing happens on its own. A human clicks Approve first.</li>
+      <li>zuumb can only do a few specific things, listed below, never "run any command".</li>
+      <li>Out of the box it runs in practice mode, <code>RESPONSE_DRY_RUN=true</code>. The button
+      works, writes a record, and touches nothing.</li>
+    </ul>
+
+    <h3>The safety rules, and why each one exists</h3>
+    <table class="t">
+      <thead><tr><th>Rule</th><th>Why</th></tr></thead>
+      <tbody>
+        <tr><td>Only actions on a fixed allowlist</td><td>A bug or a bad model response can never
+        turn into an arbitrary command.</td></tr>
+        <tr><td>A human clicks Approve</td><td>zuumb proposes, a person decides. No auto-fire.</td></tr>
+        <tr><td>Practice mode is the default</td><td>You can test the whole flow without touching
+        a real machine.</td></tr>
+        <tr><td>A separate least-privilege login, <code>zuumb-ar</code></td><td>If that credential
+        leaks it can only dispatch active response, not read alerts, delete agents, or change
+        settings.</td></tr>
+        <tr><td>Every Approve is logged, practice and live</td><td>There is always a record of
+        what was, or would have been, done.</td></tr>
+        <tr><td><code>disable-user</code> needs a second confirm</td><td>Locking an account can
+        lock out a real person. One stray click should not.</td></tr>
+        <tr><td>Live dispatches are rate-limited</td><td>A double-click or a loop cannot fire a
+        burst of real actions.</td></tr>
+      </tbody>
+    </table>
+
+    <h3>The two actions zuumb can take</h3>
+    <table class="t">
+      <thead><tr><th>Action</th><th>What it does</th><th>Wazuh script</th><th>Second confirm</th></tr></thead>
+      <tbody>
+        <tr><td><code>block-ip</code></td><td>Firewall-drops an attacker's source IP on the
+        affected host</td><td><code>!firewall-drop</code></td><td>no</td></tr>
+        <tr><td><code>disable-user</code></td><td>Locks a compromised local account on the
+        affected host</td><td><code>!disable-account</code></td><td>yes</td></tr>
+      </tbody>
+    </table>
+    <p>Any other response task stays a manual to-do. zuumb will not dispatch it.</p>
+
+    <h3>What happens when you click Approve</h3>
+    <pre><code>1.  Wazuh agent  ->  zuumb pulls the alert  ->  scores it  ->  groups it into an incident
+
+2.  zuumb proposes response tasks. A task that maps to an allowlisted action is
+    tagged with  action + target + agent id   (e.g.  block-ip / 198.51.100.77 / 006)
+
+3.  you click Approve on that task
+
+4a. IF RESPONSE_DRY_RUN = true  (the default)
+        write one audit row marked "dry-run", send nothing. Done.
+
+4b. IF RESPONSE_DRY_RUN = false
+        check the rate limit
+        POST /active-response to the manager, logged in as zuumb-ar
+        the manager tells the agent to run the script
+        write one audit row marked "live", with the HTTP result
+
+5.  the row shows at /audit and in the incident's "Dispatched actions"</code></pre>
+
+    <h3>Setting up the <code>zuumb-ar</code> login</h3>
+    <p>Create an empty Wazuh role, attach only the built-in policy that permits active-response
+    commands, create the <code>zuumb-ar</code> user, and give it that role. The
+    <a href="https://github.com/NucleiAv/zuumb#automated-mitigation-active-response-phase-14" target="_blank" rel="noreferrer">README walkthrough</a>
+    has the exact commands, plus a check that proves the login can dispatch active response and
+    nothing else, and a full dry-run then live then revert exercise against a throwaway agent.</p>
+
+    <div class="note warn">
+      <span class="tag">Before you set RESPONSE_DRY_RUN to false</span>
+      Live mode runs real <code>firewall-drop</code> and <code>disable-account</code> commands on
+      the target agent. Test against a throwaway agent from
+      <code>docker-compose.agents.yml</code>, never a machine you care about, and read the README
+      walkthrough first.
+    </div>
+
+    <h2 id="evaluation">Evaluation</h2>
+    <p>Triage quality is measured against a hand-labelled set of 34 synthetic Wazuh alerts, 14
+    benign, 10 suspicious, 10 malicious.</p>
+    <pre><code>python -m eval.run_eval [--few-shot]</code></pre>
+    <table class="t">
+      <thead><tr><th>Run</th><th>Accuracy</th><th>Malicious precision</th><th>Malicious recall</th><th>Malicious scored benign</th></tr></thead>
+      <tbody>
+        <tr><td>baseline</td><td>0.82 (28 of 34)</td><td>1.00</td><td>0.70</td><td>0</td></tr>
+        <tr><td>with analyst few-shot</td><td>0.94 (32 of 34)</td><td>1.00</td><td>0.90</td><td>0</td></tr>
+      </tbody>
+    </table>
+    <ul class="body">
+      <li>No malicious alert was ever called benign in either run. The safety-critical failure
+      mode is clean, and every malicious verdict the model gave was correct.</li>
+      <li>Baseline misses are all one severity level low, mostly the model correctly following
+      the prompt's rule that a malicious verdict needs observed success, not just an attempt.</li>
+      <li>One recorded analyst override, a successful login right after a brute-force burst, lifted
+      accuracy 12 points and malicious recall from 0.70 to 0.90 with no loss of precision. That is
+      the feedback loop paying off, measured rather than asserted.</li>
+    </ul>
+
+    <h2 id="compatibility">Compatibility</h2>
+    <table class="t">
+      <thead><tr><th>Component</th><th>Status</th></tr></thead>
+      <tbody>
+        <tr><td>Wazuh 4.9.x</td><td>Fully supported. The alert normaliser targets the Wazuh 4.x
+        schema and is tested against a live 4.9.2 single-node stack.</td></tr>
+        <tr><td>Wazuh 5.x and OCSF</td><td>Not yet supported. The 5.x ECS and OCSF event schema
+        differs from the 4.x schema the normaliser targets. Tracked on the
+        <a href="#roadmap">roadmap</a>.</td></tr>
+        <tr><td>Database</td><td>SQLite by default, in a file or a named volume. Postgres is a
+        drop-in via <code>DATABASE_URL</code>.</td></tr>
+        <tr><td>Container image</td><td>Published to <code>ghcr.io/nucleiav/zuumb</code> for
+        <code>linux/amd64</code> and <code>linux/arm64</code>, tagged by version and
+        <code>latest</code>. Runs as a non-root user.</td></tr>
+        <tr><td>Host platform</td><td>Developed on Windows with Docker under WSL. The app itself
+        is plain Python and runs anywhere Python 3.11 does.</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="roadmap">Roadmap</h2>
+    <ul class="body">
+      <li>Wazuh 5.x and OCSF schema support in the alert normaliser.</li>
+      <li>Continued tuning of the correlation window and chain-spread limits against long runs of
+      real traffic.</li>
+    </ul>
+    <p class="muted">zuumb is a portfolio and demo project built on top of prior Wazuh
+    detection-rule work. It is deliberately small.</p>
+  </main>
+</div>
+
+<footer class="foot">
+  <div class="inner">
+    <span class="wordmark">zuumb</span>
+    <a href="/">Home</a>
+    <a href="https://github.com/NucleiAv/zuumb/" target="_blank" rel="noreferrer">GitHub</a>
+    <a href="https://github.com/NucleiAv/zuumb/pkgs/container/zuumb" target="_blank" rel="noreferrer">Container</a>
+    <span style="margin-left:auto"><a href="https://github.com/NucleiAv/" target="_blank" rel="noreferrer" style="color:inherit">Built with Nuclei</a></span>
+  </div>
+</footer>
+
+<script>
+  (function () {
+    var btn = document.querySelector("[data-theme-toggle]");
+    function glyph() {
+      return document.documentElement.dataset.theme === "dark" ? "☀" : "☾";
+    }
+    if (btn) {
+      btn.textContent = glyph();
+      btn.addEventListener("click", function () {
+        var next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+        document.documentElement.dataset.theme = next;
+        try { localStorage.setItem("zuumb-theme", next); } catch (e) {}
+        btn.textContent = glyph();
+      });
+    }
+
+    var links = Array.prototype.slice.call(document.querySelectorAll("aside.side a[href^='#']"));
+    var targets = links
+      .map(function (a) { return document.getElementById(a.getAttribute("href").slice(1)); })
+      .filter(Boolean);
+    function onScroll() {
+      var y = window.scrollY + 100;
+      var current = targets[0];
+      for (var i = 0; i < targets.length; i++) {
+        if (targets[i].offsetTop <= y) current = targets[i];
+      }
+      links.forEach(function (a) {
+        a.classList.toggle("active", current && a.getAttribute("href") === "#" + current.id);
+      });
+    }
+    window.addEventListener("scroll", onScroll, { passive: true });
+    onScroll();
+  })();
+</script>
+
+</body>
+</html>
