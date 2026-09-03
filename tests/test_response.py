@@ -6,8 +6,10 @@ from sqlmodel import select
 
 from app.db.models import Alert, Incident, IncidentAlert, Task
 from app.db.session import get_session
+from app.config import settings
 from app.response import playbooks
-from app.response.playbooks import approve_task, propose_for_incident, suggest
+from app.response.approve import ConfirmRequired, RateLimited, approve_task
+from app.response.playbooks import propose_for_incident, suggest
 
 
 def _alert(techs=(), groups=(), aid=None) -> Alert:
@@ -36,6 +38,24 @@ def test_suggest_fallback_only_when_attack_group_present():
     assert suggest(1, [_alert([], ["syslog"], aid=1)], {}) == []
 
 
+def test_suggest_tags_block_ip_when_incident_has_ip_and_agent():
+    raw = json.dumps({"rule": {"mitre": {"id": ["T1110"]}, "groups": ["attack"]},
+                      "agent": {"id": "007", "name": "edge-01"}})
+    a = Alert(id=1, wazuh_alert_id="t1", timestamp=datetime(2026, 8, 28, 14, 0),
+              rule_id="5712", rule_description="brute force", src_ip="203.0.113.9",
+              raw_json=raw)
+    tasks = suggest(1, [a], {}, {1: "malicious"})
+    block = next(t for t in tasks if t.title.startswith("Block the source IP"))
+    assert (block.action, block.action_target, block.agent_id) == ("block-ip", "203.0.113.9", "007")
+    # a task with no AR mapping stays untagged
+    assert all(t.action is None for t in tasks if not t.title.startswith("Block the source IP"))
+
+
+def test_suggest_leaves_action_unset_without_a_resolvable_target():
+    a = _alert(["T1110"], ["attack"], aid=1)  # no src_ip, no agent id
+    assert all(t.action is None for t in suggest(1, [a], {}, {1: "malicious"}))
+
+
 def test_propose_for_incident_persists_and_is_idempotent():
     with get_session() as s:
         a = _alert(["T1110"])
@@ -55,21 +75,78 @@ def test_propose_for_incident_persists_and_is_idempotent():
         assert len(s.exec(select(Task).where(Task.incident_id == inc.id)).all()) == len(first)
 
 
-def test_approve_task_changes_only_status():
+def test_approve_plain_task_just_marks_done_no_log():
+    from app.db.models import ResponseActionLog
     with get_session() as s:
         t = Task(incident_id=99, type="mitigation", title="x", priority="high")
         s.add(t)
         s.commit()
         s.refresh(t)
-        fixed = (t.incident_id, t.type, t.title, t.priority, t.assignee)
-        out = approve_task(s, t.id)
-    assert out.status == "done"
-    assert (out.incident_id, out.type, out.title, out.priority, out.assignee) == fixed
+        task, log = approve_task(s, t.id)
+        assert task.status == "done" and log is None
+        assert s.exec(select(ResponseActionLog)).all() == []
 
 
 def test_approve_missing_task_raises():
     with get_session() as s, pytest.raises(ValueError):
         approve_task(s, 123456)
+
+
+def _action_task(action="block-ip", target="203.0.113.9", agent="001", confirm_spec=None):
+    with get_session() as s:
+        t = Task(incident_id=1, type="mitigation", title="t", priority="high",
+                 action=action, action_target=target, agent_id=agent)
+        s.add(t)
+        s.commit()
+        s.refresh(t)
+        return t.id
+
+
+def test_approve_dry_run_logs_intent_and_never_dispatches(monkeypatch):
+    from app.db.models import ResponseActionLog
+    monkeypatch.setattr(settings, "response_dry_run", True)
+    boom = lambda *a, **k: pytest.fail("dispatch called in dry-run")  # noqa: E731
+    tid = _action_task()
+    with get_session() as s:
+        task, log = approve_task(s, tid, dispatch=boom)
+    assert task.status == "done"
+    assert log.dry_run is True and log.ok is True and log.action == "block-ip"
+    assert log.target == "203.0.113.9" and log.agent_id == "001"
+    with get_session() as s:
+        assert len(s.exec(select(ResponseActionLog)).all()) == 1
+
+
+def test_approve_real_dispatch_calls_active_response_and_records_result(monkeypatch):
+    monkeypatch.setattr(settings, "response_dry_run", False)
+    calls = []
+    fake = lambda a, t, ag: (calls.append((a, t, ag)) or  # noqa: E731
+                             {"ok": False, "status_code": 500, "text": "nope"})
+    tid = _action_task()
+    with get_session() as s:
+        _task, log = approve_task(s, tid, dispatch=fake)
+    assert calls == [("block-ip", "203.0.113.9", "001")]
+    assert log.dry_run is False and log.ok is False and log.status_code == 500
+
+
+def test_disable_user_needs_a_second_confirmation(monkeypatch):
+    monkeypatch.setattr(settings, "response_dry_run", True)
+    tid = _action_task(action="disable-user", target="deploy")
+    with get_session() as s:
+        with pytest.raises(ConfirmRequired):
+            approve_task(s, tid)
+    with get_session() as s:
+        task, log = approve_task(s, tid, confirm=True)
+        assert task.status == "done" and log.action == "disable-user"
+
+
+def test_real_dispatch_is_rate_limited(monkeypatch):
+    monkeypatch.setattr(settings, "response_dry_run", False)
+    monkeypatch.setattr(settings, "response_rate_limit_seconds", 60)
+    ok = lambda *a: {"ok": True, "status_code": 200, "text": "ok"}  # noqa: E731
+    with get_session() as s:
+        approve_task(s, _action_task(), dispatch=ok)
+        with pytest.raises(RateLimited):
+            approve_task(s, _action_task(target="203.0.113.10"), dispatch=ok)
 
 
 # --- execution guard (Phase 14): scoped allowlist, not "no execution ever" -------

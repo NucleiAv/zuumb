@@ -23,7 +23,8 @@ from app.db.models import (
 )
 from app.db.session import get_session
 from app.feedback.logger import record_override
-from app.response.playbooks import approve_task, propose_for_incident
+from app.response.approve import ConfirmRequired, RateLimited, approve_task
+from app.response.playbooks import propose_for_incident
 from app.web.stats import DAYS, compute_stats
 
 router = APIRouter()
@@ -304,14 +305,21 @@ def alert_detail(request: Request, alert_id: int):
 
 
 @router.post("/tasks/{task_id}/approve")
-def task_approve(task_id: int):
-    """Mark a proposed task done. No response action is executed — see playbooks.py."""
+def task_approve(task_id: int, confirm: str = Form("")):
+    """Approve a task. Plain tasks just flip to done; an action-tagged task also
+    dispatches (or, in dry-run, records intent) via the active-response path."""
     with get_session() as s:
         try:
-            task = approve_task(s, task_id)
+            task, _log = approve_task(s, task_id, confirm=bool(confirm))
         except ValueError:
             raise HTTPException(status_code=404, detail="task not found")
-    return RedirectResponse(f"/incidents/{task.incident_id}", status_code=303)
+        except ConfirmRequired as e:
+            return RedirectResponse(f"/incidents/{e.incident_id}?confirm={task_id}",
+                                    status_code=303)
+        except RateLimited as e:
+            raise HTTPException(status_code=429, detail=str(e))
+        dest = task.incident_id
+    return RedirectResponse(f"/incidents/{dest}", status_code=303)
 
 
 @router.post("/verdicts/{verdict_id}/override")
