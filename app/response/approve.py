@@ -32,10 +32,6 @@ class RateLimited(Exception):
     """A real action was dispatched too recently."""
 
 
-def _naive_utc(dt: datetime) -> datetime:
-    return dt.astimezone(timezone.utc).replace(tzinfo=None) if dt.tzinfo else dt
-
-
 def _check_rate_limit(session: Session) -> None:
     gap = settings.response_rate_limit_seconds
     last = session.exec(
@@ -43,10 +39,12 @@ def _check_rate_limit(session: Session) -> None:
         .where(ResponseActionLog.dry_run == False)  # noqa: E712 — SQL, not `is`
         .order_by(ResponseActionLog.created_at.desc())
     ).first()
-    if last:
-        now = datetime.now(timezone.utc).replace(tzinfo=None)
-        if now - _naive_utc(last.created_at) < timedelta(seconds=gap):
-            raise RateLimited(f"another action was dispatched < {gap}s ago")
+    if not last:
+        return
+    lc = last.created_at
+    lc = lc.astimezone(timezone.utc).replace(tzinfo=None) if lc.tzinfo else lc
+    if datetime.now(timezone.utc).replace(tzinfo=None) - lc < timedelta(seconds=gap):
+        raise RateLimited(f"another action was dispatched < {gap}s ago")
 
 
 def approve_task(session: Session, task_id: int, *, approver: str = "analyst",
