@@ -4,7 +4,7 @@
 {% set triaging = stats.triage.done < stats.triage.total %}
 {% block head %}{% if triaging %}<meta http-equiv="refresh" content="8">{% endif %}{% endblock %}
 {% block body %}
-<h1>Incidents ({{ incidents|length }})</h1>
+<h1>Incidents ({{ total }})</h1>
 
 {% if triaging %}
 <p class="banner">Triaging new alerts — <b>{{ stats.triage.done }}</b> / {{ stats.triage.total }} done.
@@ -104,6 +104,13 @@
   {% endfor %}
   </tbody>
 </table>
+{% if pages > 1 %}
+<nav class="pager">
+  {% if page > 1 %}<a href="{{ request.url.include_query_params(page=page-1) }}">‹ prev</a>{% else %}<span class="muted">‹ prev</span>{% endif %}
+  <span class="muted">page {{ page }} / {{ pages }}</span>
+  {% if page < pages %}<a href="{{ request.url.include_query_params(page=page+1) }}">next ›</a>{% else %}<span class="muted">next ›</span>{% endif %}
+</nav>
+{% endif %}
 {% else %}
 <p class="muted">No incidents match the current filters.</p>
 {% endif %}
