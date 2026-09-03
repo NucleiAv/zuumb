@@ -11,6 +11,7 @@ from sqlmodel import select
 
 from app.attack_chain.stitcher import TACTIC_ORDER, _incident_tactics, stage_label
 from app.correlation.engine import entities, incident_severity
+from app.config import settings
 from app.db.models import (
     Alert,
     AnalystFeedback,
@@ -18,12 +19,14 @@ from app.db.models import (
     AttackChainIncident,
     Incident,
     IncidentAlert,
+    ResponseActionLog,
     Task,
     Verdict,
 )
 from app.db.session import get_session
 from app.feedback.logger import record_override
-from app.response.playbooks import approve_task, propose_for_incident
+from app.response.approve import ConfirmRequired, RateLimited, approve_task
+from app.response.playbooks import propose_for_incident
 from app.web.stats import DAYS, compute_stats
 
 router = APIRouter()
@@ -249,13 +252,32 @@ def incident_detail(request: Request, incident_id: int):
             ).all()
         }
         tasks = propose_for_incident(incident_id, s)  # idempotent: suggests, never executes
+        dispatches = s.exec(
+            select(ResponseActionLog)
+            .where(ResponseActionLog.incident_id == incident_id)
+            .order_by(ResponseActionLog.created_at.desc())
+        ).all()
     rows = []
     for a in alerts:
         v = verdicts.get(a.id)
         rows.append((a, v, overrides.get(v.id) if v else None))
-    return templates.TemplateResponse(
-        request, "incident_detail.html", {"incident": incident, "rows": rows, "tasks": tasks}
-    )
+    return templates.TemplateResponse(request, "incident_detail.html", {
+        "incident": incident, "rows": rows, "tasks": tasks, "dispatches": dispatches,
+        "dry_run": settings.response_dry_run,
+        "confirm_task": request.query_params.get("confirm"),
+    })
+
+
+@router.get("/audit", response_class=HTMLResponse)
+def audit_log(request: Request):
+    """Every approved active-response dispatch, dry-run included."""
+    with get_session() as s:
+        logs = s.exec(
+            select(ResponseActionLog).order_by(ResponseActionLog.created_at.desc())
+        ).all()
+    return templates.TemplateResponse(request, "audit.html", {
+        "logs": logs, "dry_run": settings.response_dry_run,
+    })
 
 
 def _flatten(obj, prefix: str = ""):
@@ -304,14 +326,21 @@ def alert_detail(request: Request, alert_id: int):
 
 
 @router.post("/tasks/{task_id}/approve")
-def task_approve(task_id: int):
-    """Mark a proposed task done. No response action is executed — see playbooks.py."""
+def task_approve(task_id: int, confirm: str = Form("")):
+    """Approve a task. Plain tasks just flip to done; an action-tagged task also
+    dispatches (or, in dry-run, records intent) via the active-response path."""
     with get_session() as s:
         try:
-            task = approve_task(s, task_id)
+            task, _log = approve_task(s, task_id, confirm=bool(confirm))
         except ValueError:
             raise HTTPException(status_code=404, detail="task not found")
-    return RedirectResponse(f"/incidents/{task.incident_id}", status_code=303)
+        except ConfirmRequired as e:
+            return RedirectResponse(f"/incidents/{e.incident_id}?confirm={task_id}",
+                                    status_code=303)
+        except RateLimited as e:
+            raise HTTPException(status_code=429, detail=str(e))
+        dest = task.incident_id
+    return RedirectResponse(f"/incidents/{dest}", status_code=303)
 
 
 @router.post("/verdicts/{verdict_id}/override")

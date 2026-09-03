@@ -1,10 +1,10 @@
 """Response layer: propose human playbook tasks for an incident.
 
-HARD BOUNDARY — this module PROPOSES only. Nothing here executes a response:
-no host isolation, no firewall/EDR calls, no credential changes, no shelling out.
-`approve_task` sets a DB status field and returns; that is the entire effect.
-The absence of any execution primitive is enforced by
-tests/test_response.py::test_module_has_no_execution_primitives.
+PROPOSES only. Nothing here executes — a proposed task is just a DB row. A task
+whose playbook maps to an allowlisted active-response action is tagged with
+`action` / `action_target` / `agent_id` here; the dispatch (after a human
+approves) happens in app.response.approve -> app.response.active_response.
+tests/test_response.py enforces that this module stays execution-free.
 """
 from __future__ import annotations
 
@@ -27,11 +27,13 @@ PLAYBOOKS: list[dict] = [
     {"techniques": {"T1059"}, "type": "investigation", "priority": "high",
      "title": "Capture the process tree and outbound connections for the shell"},
     {"techniques": {"T1078"}, "type": "mitigation", "priority": "high",
-     "title": "Rotate or disable the affected account credential"},
+     "title": "Rotate or disable the affected account credential",
+     "action": "disable-user", "needs": "user"},
     {"techniques": {"T1078", "T1110"}, "type": "investigation", "priority": "medium",
      "title": "Review auth logs for other sessions from the same source IP"},
     {"techniques": {"T1110"}, "type": "mitigation", "priority": "medium",
-     "title": "Block the source IP at the perimeter and enforce account lockout"},
+     "title": "Block the source IP at the perimeter and enforce account lockout",
+     "action": "block-ip", "needs": "ip"},
     {"techniques": {"T1041"}, "type": "mitigation", "priority": "high",
      "title": "Block egress to the destination and preserve the transferred data"},
     {"techniques": {"T1041"}, "type": "investigation", "priority": "high",
@@ -42,6 +44,22 @@ PLAYBOOKS: list[dict] = [
 
 _FALLBACK = {"type": "investigation", "priority": "medium",
              "title": "Triage the alert, confirm scope, and document findings"}
+
+
+def _action_context(alerts: list[Alert], verdict_by_alert: dict[int, str]) -> dict:
+    """From the incident's attack-signal alerts: an ip, a user, and the Wazuh
+    agent id to target. Any may stay None."""
+    signal = [
+        a for a in alerts
+        if verdict_by_alert.get(a.id) in ("malicious", "suspicious")
+        or "attack" in json.loads(a.raw_json).get("rule", {}).get("groups", [])
+    ] or alerts
+    ctx = {"ip": None, "user": None, "agent": None}
+    for a in signal:
+        ctx["ip"] = ctx["ip"] or a.src_ip
+        ctx["user"] = ctx["user"] or a.user
+        ctx["agent"] = ctx["agent"] or json.loads(a.raw_json).get("agent", {}).get("id")
+    return ctx
 
 
 def _signals(alerts: list[Alert], technique_by_alert: dict[int, str | None]) -> tuple[set[str], set[str]]:
@@ -58,16 +76,23 @@ def _signals(alerts: list[Alert], technique_by_alert: dict[int, str | None]) -> 
     return techniques, groups
 
 
-def suggest(incident_id: int, alerts: list[Alert], technique_by_alert: dict[int, str | None]) -> list[Task]:
+def suggest(incident_id: int, alerts: list[Alert], technique_by_alert: dict[int, str | None],
+            verdict_by_alert: dict[int, str] | None = None) -> list[Task]:
     """Proposed (unsaved) Task rows for one incident. Pure — no DB, no side effects."""
     techniques, groups = _signals(alerts, technique_by_alert)
+    ctx = _action_context(alerts, verdict_by_alert or {})
     seen: set[str] = set()
     tasks: list[Task] = []
     for pb in PLAYBOOKS:
         if pb["techniques"] & techniques and pb["title"] not in seen:
             seen.add(pb["title"])
-            tasks.append(Task(incident_id=incident_id, type=pb["type"],
-                              title=pb["title"], priority=pb["priority"]))
+            task = Task(incident_id=incident_id, type=pb["type"],
+                        title=pb["title"], priority=pb["priority"])
+            if pb.get("action") and ctx[pb["needs"]] and ctx["agent"]:
+                task.action = pb["action"]
+                task.action_target = ctx[pb["needs"]]
+                task.agent_id = ctx["agent"]
+            tasks.append(task)
     if not tasks and "attack" in groups:
         tasks.append(Task(incident_id=incident_id, **_FALLBACK))
     return tasks
@@ -87,14 +112,15 @@ def propose_for_incident(incident_id: int, session: Session | None = None) -> li
             ).all()
         ]
         alerts = session.exec(select(Alert).where(Alert.id.in_(alert_ids))).all()
-        technique = {
-            v.alert_id: v.mitre_technique
-            for v in session.exec(select(Verdict).where(Verdict.alert_id.in_(alert_ids))).all()
-        }
+        verdict_rows = session.exec(
+            select(Verdict).where(Verdict.alert_id.in_(alert_ids))
+        ).all()
+        technique = {v.alert_id: v.mitre_technique for v in verdict_rows}
+        verdict = {v.alert_id: v.verdict for v in verdict_rows}
         existing = {
             t.title for t in session.exec(select(Task).where(Task.incident_id == incident_id)).all()
         }
-        for task in suggest(incident_id, alerts, technique):
+        for task in suggest(incident_id, alerts, technique, verdict):
             if task.title not in existing:
                 session.add(task)
         session.commit()
@@ -104,14 +130,3 @@ def propose_for_incident(incident_id: int, session: Session | None = None) -> li
     finally:
         if own:
             session.close()
-
-
-def approve_task(session: Session, task_id: int) -> Task:
-    """Mark a proposed task done. This is the ONLY effect — no response is executed."""
-    task = session.get(Task, task_id)
-    if task is None:
-        raise ValueError(f"task {task_id} not found")
-    task.status = "done"
-    session.commit()
-    session.refresh(task)
-    return task

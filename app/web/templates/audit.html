@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Response audit{% endblock %}
+{% block breadcrumb %}<span class="here">Response audit</span>{% endblock %}
+{% block body %}
+<h1>Response audit ({{ logs|length }})</h1>
+<p class="subtle">
+  Every approved active-response dispatch — dry-run included.
+  Mode is currently <b>{{ 'DRY-RUN — nothing is sent to hosts' if dry_run else 'LIVE — approvals reach agents' }}</b>
+  (<code>RESPONSE_DRY_RUN</code> in <code>.env</code>).
+</p>
+
+{% if logs %}
+<table>
+  <thead>
+    <tr><th>When</th><th>Incident</th><th>Action</th><th>Target</th><th>Agent</th><th>By</th><th>Mode</th><th>Result</th></tr>
+  </thead>
+  <tbody>
+  {% for d in logs %}
+    <tr>
+      <td class="muted"><time datetime="{{ d.created_at|isoz }}">{{ d.created_at|isoz }}</time></td>
+      <td><a href="/incidents/{{ d.incident_id }}">#{{ d.incident_id }}</a></td>
+      <td>{{ d.action }}</td>
+      <td><code>{{ d.target }}</code></td>
+      <td>{{ d.agent_id }}</td>
+      <td class="muted">{{ d.approver }}</td>
+      <td>{{ 'dry-run' if d.dry_run else 'live' }}</td>
+      <td class="{{ 'v-benign' if d.ok else 'v-malicious' }}">
+        {{ 'ok' if d.ok else 'failed' }}{% if d.status_code %} · {{ d.status_code }}{% endif %}
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="muted">No response actions dispatched yet.</p>
+{% endif %}
+{% endblock %}

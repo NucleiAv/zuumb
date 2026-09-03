@@ -25,5 +25,15 @@ class Settings(BaseSettings):
     # Lower it if real traffic is dense enough that legit chains stay small.
     chain_max_entity_spread: int = 4
 
+    # Active response (Phase 14). SEPARATE least-privilege Manager API user — never
+    # the ingestion credential. Its RBAC policy should allow only active-response:command.
+    wazuh_ar_api_url: str = "https://localhost:55000"
+    wazuh_ar_api_user: str = "zuumb-ar"
+    wazuh_ar_api_password: str = "changeme"
+    # DEFAULT ON: an approved action is logged as intent, nothing is dispatched to a
+    # host. Flip to false only when you mean for approvals to hit real machines.
+    response_dry_run: bool = True
+    response_rate_limit_seconds: int = 30  # min gap between two dispatched actions
+
 
 settings = Settings()

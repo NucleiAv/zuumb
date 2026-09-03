@@ -15,6 +15,7 @@ x-agent: &agent
   build: ./docker/agent
   image: zuumb/wazuh-agent:4.9.2
   restart: unless-stopped
+  cap_add: [NET_ADMIN]          # so the firewall-drop AR script can actually add an iptables rule
   environment:
     WAZUH_MANAGER: wazuh.manager
     LAB_NOISE: "1"
