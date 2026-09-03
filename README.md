@@ -360,32 +360,25 @@ Three things are always true:
 ### What happens when you click Approve
 
 ```text
- Wazuh agent  --alerts-->  zuumb poller  --score-->  incident + response tasks
-                                                              |
-                                    a task gets TAGGED with:  action + target + agent id
-                                    e.g.  block-ip / 198.51.100.77 / 006
-                                                              |
-                                          you click  "Approve"  in the dashboard
-                                                              |
-                                             is RESPONSE_DRY_RUN true?
-                        +---------------- YES ----------------+------------- NO -------------+
-                        |                                    |                             |
-              write an audit row                     check the 30 s rate limit
-              marked "dry-run",                              |
-              dispatch NOTHING                       POST /active-response
-                        |                            (logs in as zuumb-ar)
-                        |                                    |
-                        |                            Wazuh manager --> agent
-                        |                                    |
-                        |                            agent runs firewall-drop
-                        |                                    |
-                        |                            real iptables DROP rule added
-                        |                                    |
-                        |                            write an audit row
-                        |                            marked "live" + the result
-                        +------------------+-----------------+
-                                           |
-                             row shows at  /audit  and on the incident page
+1.  Wazuh agent  ->  zuumb poller pulls the alert  ->  scores it  ->  groups it into an incident
+
+2.  zuumb proposes response tasks. A task that maps to an allowlisted action gets
+    TAGGED with  action + target + agent id     (e.g.  block-ip / 198.51.100.77 / 006)
+
+3.  you click  "Approve"  on that task in the dashboard
+
+4a.  IF  RESPONSE_DRY_RUN = true   (the default)
+        -> write ONE audit row, marked "dry-run"
+        -> send nothing to any host.  Done.
+
+4b.  IF  RESPONSE_DRY_RUN = false
+        -> check the 30-second rate limit (reject if a live action was just sent)
+        -> POST /active-response to the Wazuh manager, logging in as zuumb-ar
+        -> manager tells the agent to run  firewall-drop
+        -> the agent adds a real iptables DROP rule for that IP
+        -> write ONE audit row, marked "live", with the HTTP result  (e.g. ok - 200)
+
+5.  the audit row shows at  /audit  and in the incident's "Dispatched actions"
 ```
 
 Which file does what:
