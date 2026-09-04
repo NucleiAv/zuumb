@@ -10,6 +10,10 @@
       "use": "@vercel/static"
     },
     {
+      "src": "assets/**",
+      "use": "@vercel/static"
+    },
+    {
       "src": "googlef0d21393cf8ca719.html",
       "use": "@vercel/static"
     },

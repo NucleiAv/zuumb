@@ -153,6 +153,15 @@
     text-transform:uppercase; color:var(--faint); display:block; margin-bottom:6px;
   }
 
+  figure.shot { margin:24px 0 0; }
+  figure.shot img {
+    display:block; width:100%; height:auto;
+    border:1px solid var(--line-strong); border-radius:12px; background:var(--surface);
+  }
+  figure.shot figcaption {
+    margin-top:10px; font-size:13px; color:var(--muted); max-width:72ch;
+  }
+
   footer.foot {
     border-top:1px solid var(--line); margin-top:40px;
   }
@@ -511,6 +520,13 @@ curl -sk -H "Authorization: Bearer $TOKEN" "https://localhost:55000/agents/summa
     <h2 id="dashboard">The dashboard</h2>
     <p>Served by the app on port 8000. It is server-rendered, with a light and dark theme that
     follows your system setting and remembers a manual choice.</p>
+    <figure class="shot">
+      <img src="/assets/dashboard.png" width="1885" height="857" loading="lazy"
+        onerror="this.closest('figure').remove()"
+        alt="The zuumb incidents view. KPI cards for total alerts, total incidents, high-severity incidents and hosts affected, sit above severity and verdict donut charts, bar charts for top source IPs, hosts, rules and MITRE techniques, an alerts and incidents time series, and an activity heatmap by hour and weekday.">
+      <figcaption>The incidents view. KPI cards and charts across the top, the incident table
+      below, every panel clickable to filter.</figcaption>
+    </figure>
     <table class="t">
       <thead><tr><th>View</th><th>Shows</th></tr></thead>
       <tbody>
