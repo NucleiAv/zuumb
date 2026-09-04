@@ -154,12 +154,21 @@
   }
 
   figure.shot { margin:24px 0 0; }
+  figure.shot:not(:has(img)) { display:none; }
   figure.shot img {
     display:block; width:100%; height:auto;
     border:1px solid var(--line-strong); border-radius:12px; background:var(--surface);
   }
   figure.shot figcaption {
     margin-top:10px; font-size:13px; color:var(--muted); max-width:72ch;
+  }
+  /* show the screenshot that matches the active theme */
+  figure.shot .shot-dark { display:none; }
+  html[data-theme="dark"] figure.shot .shot-light { display:none; }
+  html[data-theme="dark"] figure.shot .shot-dark { display:block; }
+  @media (prefers-color-scheme:dark) {
+    html:not([data-theme="light"]) figure.shot .shot-light { display:none; }
+    html:not([data-theme="light"]) figure.shot .shot-dark { display:block; }
   }
 
   footer.foot {
@@ -521,11 +530,14 @@ curl -sk -H "Authorization: Bearer $TOKEN" "https://localhost:55000/agents/summa
     <p>Served by the app on port 8000. It is server-rendered, with a light and dark theme that
     follows your system setting and remembers a manual choice.</p>
     <figure class="shot">
-      <img src="/assets/dashboard.png" width="1885" height="857" loading="lazy"
-        onerror="this.closest('figure').remove()"
-        alt="The zuumb incidents view. KPI cards for total alerts, total incidents, high-severity incidents and hosts affected, sit above severity and verdict donut charts, bar charts for top source IPs, hosts, rules and MITRE techniques, an alerts and incidents time series, and an activity heatmap by hour and weekday.">
+      <img class="shot-light" src="/assets/dashboard-light.png" width="1885" height="857"
+        loading="lazy" onerror="this.remove()"
+        alt="The zuumb incidents view. KPI cards for total alerts, total incidents, high-severity incidents and hosts affected sit above severity and verdict donut charts, bar charts for top source IPs, hosts, rules and MITRE techniques, an alerts and incidents time series, and an activity heatmap by hour and weekday.">
+      <img class="shot-dark" src="/assets/dashboard-dark.png" width="1885" height="857"
+        loading="lazy" onerror="this.remove()"
+        alt="The zuumb incidents view. KPI cards for total alerts, total incidents, high-severity incidents and hosts affected sit above severity and verdict donut charts, bar charts for top source IPs, hosts, rules and MITRE techniques, an alerts and incidents time series, and an activity heatmap by hour and weekday.">
       <figcaption>The incidents view. KPI cards and charts across the top, the incident table
-      below, every panel clickable to filter.</figcaption>
+      below, every panel clickable to filter. This screenshot follows the page theme.</figcaption>
     </figure>
     <table class="t">
       <thead><tr><th>View</th><th>Shows</th></tr></thead>
