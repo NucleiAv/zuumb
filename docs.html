@@ -97,7 +97,7 @@
     color:var(--fg); border-left-color:var(--accent); background:var(--surface);
   }
 
-  main.doc { padding:40px 0 96px; min-width:0; }
+  main.doc { padding:40px 0 96px; min-width:0; overflow-wrap:break-word; }
   .kicker {
     font-family:"IBM Plex Mono",monospace; font-size:12px; letter-spacing:.14em;
     text-transform:uppercase; color:var(--faint);
@@ -187,15 +187,37 @@
     }
     aside.side .group { display:none; }
     aside.side details { display:block; }
-    aside.side details[open] .group { display:block; }
+    aside.side details[open] ~ .group { display:block; }
+    aside.side details[open] ~ .group:first-of-type { margin-top:0; }
     aside.side details summary {
       cursor:pointer; padding:12px 14px; border:1px solid var(--line);
       border-radius:9px; font-weight:600; list-style:none;
     }
     aside.side details summary::-webkit-details-marker { display:none; }
     aside.side details[open] summary { margin-bottom:16px; }
-    aside.side details .group:first-of-type { margin-top:0; }
     main.doc { padding-top:26px; }
+  }
+
+  @media (max-width:640px) {
+    header.bar .inner { gap:12px; }
+    .wordmark { font-size:21px; }
+    .bar nav { gap:14px; }
+
+    main.doc { padding:16px 0 60px; }
+    h1 { font-size:29px; }
+    h2 { margin:44px 0 0; font-size:22px; padding-top:18px; }
+    h3 { margin:26px 0 0; font-size:16px; }
+
+    /* dense tables scroll inside their own box so the page never scrolls sideways */
+    table.t { display:block; width:100%; overflow-x:auto; -webkit-overflow-scrolling:touch; }
+    table.t th, table.t td { padding:8px 10px; }
+    table.t td code { white-space:normal; overflow-wrap:anywhere; }
+
+    pre { padding:12px 12px; font-size:12px; }
+    .note { padding:13px 14px; font-size:13.5px; }
+    figure.shot figcaption { font-size:12px; }
+
+    aside.side li a { padding:10px 12px; }   /* comfortable tap targets */
   }
 </style>
 </head>
@@ -755,8 +777,12 @@ curl -sk -H "Authorization: Bearer $TOKEN" "https://localhost:55000/agents/summa
       setActive(current);
     }
 
+    var menu = document.querySelector("aside.side details");   // the mobile nav drawer
     links.forEach(function (a) {
-      a.addEventListener("click", function () { setActive(this.getAttribute("href").slice(1)); });
+      a.addEventListener("click", function () {
+        setActive(this.getAttribute("href").slice(1));
+        if (menu) menu.open = false;   // collapse the mobile menu after picking a section
+      });
     });
     window.addEventListener("scroll", spy, { passive: true });
     window.addEventListener("resize", spy);
