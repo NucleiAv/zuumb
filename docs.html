@@ -111,7 +111,7 @@
   h2 {
     font-family:Archivo,sans-serif; font-style:italic; font-weight:800;
     letter-spacing:-.03em; line-height:1.05; margin:64px 0 0;
-    font-size:clamp(24px,3.4vw,34px); scroll-margin-top:88px;
+    font-size:clamp(24px,3.4vw,34px);
     padding-top:22px; border-top:1px solid var(--line);
   }
   h3 {
@@ -734,21 +734,38 @@ curl -sk -H "Authorization: Bearer $TOKEN" "https://localhost:55000/agents/summa
     }
 
     var links = Array.prototype.slice.call(document.querySelectorAll("aside.side a[href^='#']"));
-    var targets = links
+    var sections = links
       .map(function (a) { return document.getElementById(a.getAttribute("href").slice(1)); })
       .filter(Boolean);
-    function onScroll() {
-      var y = window.scrollY + 100;
-      var current = targets[0];
-      for (var i = 0; i < targets.length; i++) {
-        if (targets[i].offsetTop <= y) current = targets[i];
-      }
+
+    function setActive(id) {
       links.forEach(function (a) {
-        a.classList.toggle("active", current && a.getAttribute("href") === "#" + current.id);
+        a.classList.toggle("active", a.getAttribute("href") === "#" + id);
       });
     }
-    window.addEventListener("scroll", onScroll, { passive: true });
-    onScroll();
+
+    function spy() {
+      if (!sections.length) return;
+      var probe = window.scrollY + 96;                 // just past the 88px sticky-header offset
+      var current = sections[0].id;
+      for (var i = 0; i < sections.length; i++) {
+        if (sections[i].getBoundingClientRect().top + window.scrollY <= probe) current = sections[i].id;
+      }
+      if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 2) {
+        current = sections[sections.length - 1].id;    // bottom of page: last section can't reach the probe
+      }
+      setActive(current);
+    }
+
+    links.forEach(function (a) {
+      a.addEventListener("click", function () { setActive(this.getAttribute("href").slice(1)); });
+    });
+    window.addEventListener("scroll", spy, { passive: true });
+    window.addEventListener("resize", spy);
+    window.addEventListener("hashchange", spy);
+    window.addEventListener("load", spy);
+    if (location.hash) setActive(location.hash.slice(1));
+    spy();
   })();
 </script>
 
