@@ -20,25 +20,23 @@ password of at least 8 characters.</p>{% endif %}
   {% endif %}
 </p>
 
-<form method="post" action="/settings/credentials" style="display:grid;gap:.6rem;max-width:320px;margin-top:1rem">
+<style>
+  .cred-form { display:grid; gap:.15rem; max-width:340px; margin-top:1rem; }
+  .cred-form label { font-size:11px; text-transform:uppercase; letter-spacing:.08em;
+    color:var(--muted); margin:.5rem 0 .25rem; }
+  .cred-form input { padding:.5rem .6rem; font:inherit; color:var(--text);
+    background:var(--bg); border:1px solid var(--border); border-radius:6px; }
+  .cred-form input:focus { outline:none; border-color:var(--accent); }
+  .cred-form button { margin-top:.9rem; }
+</style>
+<form method="post" action="/settings/credentials" class="cred-form">
   {{ csrf_field(request) }}
-  <label style="font-size:12px;color:var(--muted)">Current password
-    <input type="password" name="current_password" autocomplete="current-password" required
-           style="display:block;width:100%">
-  </label>
-  <label style="font-size:12px;color:var(--muted)">New username
-    <input type="text" name="new_username" value="{{ user }}" autocomplete="username" required
-           style="display:block;width:100%">
-  </label>
-  <label style="font-size:12px;color:var(--muted)">New password (8+ chars)
-    <input type="password" name="new_password" autocomplete="new-password" minlength="8" required
-           style="display:block;width:100%">
-  </label>
+  <label for="cp">Current password</label>
+  <input id="cp" type="password" name="current_password" autocomplete="current-password" required>
+  <label for="nu">New username</label>
+  <input id="nu" type="text" name="new_username" value="{{ user }}" autocomplete="username" required>
+  <label for="np">New password (8+ characters)</label>
+  <input id="np" type="password" name="new_password" autocomplete="new-password" minlength="8" required>
   <button class="btn-approve" type="submit">Save credentials</button>
-</form>
-
-<form method="post" action="/logout" style="margin-top:1.5rem">
-  <button type="submit" style="font-size:12px;padding:.25rem .6rem;background:var(--card);
-    color:var(--text);border:1px solid var(--border);border-radius:4px;cursor:pointer">Sign out</button>
 </form>
 {% endblock %}
