@@ -56,6 +56,29 @@ def test_suggest_leaves_action_unset_without_a_resolvable_target():
     assert all(t.action is None for t in suggest(1, [a], {}, {1: "malicious"}))
 
 
+def test_action_target_and_agent_always_come_from_one_alert():
+    # item 4: the IP is on one alert, the agent id on another. The old code would
+    # pair them; now block-ip must stay untagged because no single alert has both.
+    ip_only = Alert(id=1, wazuh_alert_id="t1", timestamp=datetime(2026, 8, 28, 14, 0),
+                    rule_id="5712", rule_description="brute force", src_ip="203.0.113.9",
+                    raw_json=json.dumps({"rule": {"mitre": {"id": ["T1110"]}, "groups": ["attack"]}}))
+    agent_only = Alert(id=2, wazuh_alert_id="t2", timestamp=datetime(2026, 8, 28, 14, 1),
+                       rule_id="5501", rule_description="pam login",
+                       raw_json=json.dumps({"rule": {"mitre": {"id": ["T1110"]}, "groups": ["attack"]},
+                                            "agent": {"id": "006"}}))
+    tasks = suggest(1, [ip_only, agent_only], {}, {1: "malicious", 2: "malicious"})
+    assert all(t.action is None for t in tasks)
+
+    # one alert carrying both -> the pair is taken from that alert only
+    both = Alert(id=3, wazuh_alert_id="t3", timestamp=datetime(2026, 8, 28, 14, 2),
+                 rule_id="5712", rule_description="brute force", src_ip="203.0.113.9",
+                 raw_json=json.dumps({"rule": {"mitre": {"id": ["T1110"]}, "groups": ["attack"]},
+                                      "agent": {"id": "006"}}))
+    block = next(t for t in suggest(1, [ip_only, both], {}, {3: "malicious"})
+                 if t.title.startswith("Block the source IP"))
+    assert (block.action_target, block.agent_id) == ("203.0.113.9", "006")
+
+
 def test_propose_for_incident_persists_and_is_idempotent():
     with get_session() as s:
         a = _alert(["T1110"])
@@ -123,9 +146,19 @@ def test_approve_real_dispatch_calls_active_response_and_records_result(monkeypa
                              {"ok": False, "status_code": 500, "text": "nope"})
     tid = _action_task()
     with get_session() as s:
-        _task, log = approve_task(s, tid, dispatch=fake)
+        task, log = approve_task(s, tid, dispatch=fake)
     assert calls == [("block-ip", "203.0.113.9", "001")]
     assert log.dry_run is False and log.ok is False and log.status_code == 500
+    # item 3: a rejected live dispatch must NOT close the task
+    assert task.status == "failed"
+
+
+def test_approve_successful_live_dispatch_marks_done(monkeypatch):
+    monkeypatch.setattr(settings, "response_dry_run", False)
+    ok = lambda *a: {"ok": True, "status_code": 200, "text": "ok"}  # noqa: E731
+    with get_session() as s:
+        task, log = approve_task(s, _action_task(), dispatch=ok)
+    assert task.status == "done" and log.ok is True
 
 
 def test_disable_user_needs_a_second_confirmation(monkeypatch):
@@ -215,3 +248,12 @@ def test_dispatch_puts_one_ar_call_with_the_mapped_command():
     put = next(x for x in c.calls if x[0] == "PUT")
     assert "agents_list=001" in put[1]
     assert put[2]["command"] == "!firewall-drop" and put[2]["arguments"] == ["203.0.113.9"]
+    # item 2: firewall-drop reads srcip
+    assert put[2]["alert"]["data"] == {"srcip": "203.0.113.9"}
+
+    # item 2: disable-account reads dstuser, not srcip
+    c2 = _Client()
+    active_response.dispatch("disable-user", "mallory", "006", client=c2)
+    put2 = next(x for x in c2.calls if x[0] == "PUT")
+    assert put2[2]["command"] == "!disable-account"
+    assert put2[2]["alert"]["data"] == {"dstuser": "mallory"}

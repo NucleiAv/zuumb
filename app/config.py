@@ -19,6 +19,13 @@ class Settings(BaseSettings):
 
     database_url: str = "sqlite:///./zuumb.db"
 
+    # Dashboard auth. Empty password -> the UI and the approve endpoint are OPEN
+    # (dev/test only; startup logs a warning). Set it for anything reachable off
+    # localhost. session_secret signs the login cookie; falls back to the password.
+    dashboard_user: str = "admin"
+    dashboard_password: str = ""
+    session_secret: str = ""
+
     correlation_window_minutes: int = 30
     # chain stitcher: an entity in more incidents than this is a hub (proxy/jump box),
     # not a real link — dropped so it can't stitch unrelated incidents into one chain.

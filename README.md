@@ -33,6 +33,10 @@ docker compose up -d            # pulls ghcr.io/nucleiav/zuumb:latest
 Open http://localhost:8000.
 
 - The SQLite database lives in a named volume (`zuumb-data`); nothing else to set up.
+- **Set a dashboard password.** With `DASHBOARD_PASSWORD` blank the UI and the
+  `/tasks/*/approve` endpoint are open to anyone who can reach the port; startup
+  logs a warning. Set it (and `SESSION_SECRET` to any long random string) before
+  the container is reachable by another browser. Then sign in at `/login`.
 - **Wazuh runs elsewhere.** zuumb reads an existing Wazuh stack — it doesn't start
   one. In `.env`, point every `WAZUH_*_API_URL` at `host.docker.internal` instead
   of `localhost` (the compose file already maps that name to the host).

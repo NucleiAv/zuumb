@@ -74,7 +74,10 @@ def approve_task(session: Session, task_id: int, *, approver: str = "analyst",
             approver=approver, ok=ok, status_code=code, response_text=str(text)[:2000])
         session.add(log)
 
-    task.status = "done"
+    # A task closes only when its work actually completed: a plain task, a dry-run
+    # (intent recorded), or a live dispatch the AR API accepted. A failed live
+    # dispatch leaves the task open so the analyst can see it and retry.
+    task.status = "done" if (log is None or log.ok) else "failed"
     session.commit()
     session.refresh(task)
     if log is not None:

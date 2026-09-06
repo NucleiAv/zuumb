@@ -34,6 +34,7 @@
         <details class="override">
           <summary>override</summary>
           <form method="post" action="/verdicts/{{ v.id }}/override">
+            {{ csrf_field(request) }}
             <select name="analyst_verdict">
               <option value="benign">benign</option>
               <option value="suspicious">suspicious</option>
@@ -83,14 +84,22 @@
       <td>{{ t.status }}</td>
       <td>
         {% if t.status == 'done' %}<span class="muted">✓ done</span>
+        {% elif t.status == 'failed' %}
+        <form method="post" action="/tasks/{{ t.id }}/approve" style="margin:0">
+          {{ csrf_field(request) }}
+          <button class="btn-approve" type="submit">Retry</button>
+        </form>
+        <span class="muted" style="font-size:11px">last dispatch failed — see Dispatched actions</span>
         {% elif confirm_task == t.id|string %}
         <form method="post" action="/tasks/{{ t.id }}/approve" style="margin:0">
+          {{ csrf_field(request) }}
           <input type="hidden" name="confirm" value="1">
           <button class="btn-approve btn-danger" type="submit">Confirm dispatch</button>
         </form>
         <span class="muted" style="font-size:11px">destructive — click again to run</span>
         {% else %}
         <form method="post" action="/tasks/{{ t.id }}/approve" style="margin:0">
+          {{ csrf_field(request) }}
           <button class="btn-approve" type="submit">Approve</button>
         </form>
         {% endif %}

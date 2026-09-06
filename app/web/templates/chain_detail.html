@@ -8,6 +8,7 @@
   <span class="muted">created <time datetime="{{ chain.created_at|isoz }}">{{ chain.created_at|isoz }}</time></span> &middot;
   status
   <form method="post" action="/chains/{{ chain.id }}/status" class="inline-status">
+    {{ csrf_field(request) }}
     <select name="status" onchange="this.form.submit()">
       {% for s in ["open", "investigating", "contained", "closed"] %}
       <option value="{{ s }}" {{ 'selected' if chain.status == s }}>{{ s }}</option>

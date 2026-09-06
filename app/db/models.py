@@ -64,7 +64,7 @@ class Task(SQLModel, table=True):
     incident_id: int = Field(foreign_key="incident.id", index=True)
     type: str  # investigation | mitigation
     title: str
-    status: str = "todo"  # todo | in_progress | done
+    status: str = "todo"  # todo | in_progress | done | failed (live dispatch rejected)
     priority: str = "medium"  # low | medium | high
     assignee: str | None = None
     # Phase 14: set only on tasks that map to an allowlisted active-response action.

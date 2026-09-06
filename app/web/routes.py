@@ -4,7 +4,7 @@ from collections import Counter
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from fastapi import APIRouter, Form, HTTPException, Request
+from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlmodel import select
@@ -25,6 +25,7 @@ from app.db.models import (
 )
 from app.db.session import get_session
 from app.feedback.logger import record_override
+from app.web.auth import csrf_field, require_csrf
 from app.response.approve import ConfirmRequired, RateLimited, approve_task
 from app.response.playbooks import propose_for_incident
 from app.web.stats import DAYS, compute_stats
@@ -33,6 +34,7 @@ router = APIRouter()
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 # every timestamp goes to the browser as ISO-8601 UTC; the client renders it local
 templates.env.filters["isoz"] = lambda dt: dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+templates.env.globals["csrf_field"] = csrf_field
 # cache-bust /static/charts.js on its mtime, so a restart always invalidates a stale bundle
 templates.env.globals["charts_v"] = int(
     (Path(__file__).parent / "static" / "charts.js").stat().st_mtime
@@ -220,7 +222,7 @@ def chain_detail(request: Request, chain_id: int):
 
 
 @router.post("/chains/{chain_id}/status")
-def chain_status(chain_id: int, status: str = Form(...)):
+def chain_status(chain_id: int, status: str = Form(...), csrf_ok: None = Depends(require_csrf)):
     if status not in ("open", "investigating", "contained", "closed"):
         raise HTTPException(status_code=400, detail="invalid chain status")
     with get_session() as s:
@@ -341,7 +343,7 @@ def alert_detail(request: Request, alert_id: int):
 
 
 @router.post("/tasks/{task_id}/approve")
-def task_approve(task_id: int, confirm: str = Form("")):
+def task_approve(task_id: int, confirm: str = Form(""), csrf_ok: None = Depends(require_csrf)):
     """Approve a task. Plain tasks just flip to done; an action-tagged task also
     dispatches (or, in dry-run, records intent) via the active-response path."""
     with get_session() as s:
@@ -360,7 +362,8 @@ def task_approve(task_id: int, confirm: str = Form("")):
 
 @router.post("/verdicts/{verdict_id}/override")
 def verdict_override(
-    request: Request, verdict_id: int, analyst_verdict: str = Form(...), note: str = Form("")
+    request: Request, verdict_id: int, analyst_verdict: str = Form(...), note: str = Form(""),
+    csrf_ok: None = Depends(require_csrf),
 ):
     """Log an analyst's corrected verdict. Feeds the next triage prompt (few-shot) and
     recomputes just this incident's severity with the overridden verdict in place —
