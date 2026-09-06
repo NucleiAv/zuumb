@@ -16,7 +16,8 @@
       text: cssVar('--text'),
       grid: cssVar('--border'),
       accent: cssVar('--accent'),
-      sev: { low: cssVar('--sev-low'), medium: cssVar('--sev-medium'), high: cssVar('--sev-high') },
+      sev: { pending: cssVar('--muted'), low: cssVar('--sev-low'),
+             medium: cssVar('--sev-medium'), high: cssVar('--sev-high') },
     };
   }
 
@@ -180,10 +181,10 @@
     instances = [];
     var S = window.STATS || {};
     var p = palette();
-    var sev3 = [p.sev.low, p.sev.medium, p.sev.high];
-
-    instances.push(doughnut('c-severity', ['low', 'medium', 'high'],
-      [S.severity.low, S.severity.medium, S.severity.high], sev3, p, 'severity'));
+    var sevKeys = ['pending', 'low', 'medium', 'high'];
+    instances.push(doughnut('c-severity', sevKeys,
+      sevKeys.map(function (k) { return (S.severity || {})[k] || 0; }),
+      sevKeys.map(function (k) { return p.sev[k]; }), p, 'severity'));
 
     var tl = buildTimeline(S.events || []);
     renderHeatmap(buildHeatmap(S.events || []));
@@ -231,7 +232,7 @@
   function exportCsv(key) {
     var S = window.STATS || {}, rows;
     if (key === 'severity' || key === 'verdict_dist') {
-      var keys = key === 'severity' ? ['low', 'medium', 'high'] : ['benign', 'suspicious', 'malicious'];
+      var keys = key === 'severity' ? ['pending', 'low', 'medium', 'high'] : ['benign', 'suspicious', 'malicious'];
       rows = [[key === 'severity' ? 'severity' : 'verdict', 'count']].concat(
         keys.map(function (k) { return [k, S[key][k]]; }));
     } else if (key === 'timeline') {

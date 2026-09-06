@@ -8,7 +8,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import httpx
@@ -45,6 +45,7 @@ def _parse_ts(raw: str) -> datetime:
 def normalize_alert(raw: dict) -> Alert:
     """Map one Wazuh alert dict to an `Alert`. Raises KeyError if it isn't one."""
     user = next((v for p in _USER_PATHS if (v := _dig(raw, *p))), None)
+    mitre = _dig(raw, "rule", "mitre", "id") or []
     return Alert(
         wazuh_alert_id=str(raw["id"]),
         timestamp=_parse_ts(raw["timestamp"]),
@@ -54,6 +55,7 @@ def normalize_alert(raw: dict) -> Alert:
         src_ip=_dig(raw, "data", "srcip"),
         dst_ip=_dig(raw, "data", "dstip"),
         user=user,
+        mitre_techniques=",".join(mitre) if isinstance(mitre, list) and mitre else None,
         raw_json=json.dumps(raw, separators=(",", ":")),
     )
 
@@ -104,8 +106,18 @@ def ingest(path: str | Path, session: Session | None = None) -> int:
 
 def fetch_alerts_since(since: datetime | None, *,
                        client: httpx.Client | None = None) -> list[dict]:
-    """`wazuh-alerts-*` `_source` docs with `timestamp` strictly after `since`, ascending."""
-    query = {"range": {"timestamp": {"gt": since.isoformat()}}} if since else {"match_all": {}}
+    """`wazuh-alerts-*` `_source` docs at or after `since`, ascending.
+
+    `gte` (not `gt`) plus a small lookback so an alert that lands in the same
+    second as the cursor, or is indexed slightly late, is still fetched next
+    poll. `ingest_alerts` dedupes on wazuh_alert_id, so the re-fetched overlap
+    is harmless. ponytail: still a timestamp high-water mark, no state table.
+    """
+    if since is not None:
+        since = since - timedelta(seconds=settings.wazuh_poll_lookback_seconds)
+        query = {"range": {"timestamp": {"gte": since.isoformat()}}}
+    else:
+        query = {"match_all": {}}
     body = {"size": 500, "sort": [{"timestamp": "asc"}], "query": query}
     url = f"{settings.wazuh_api_url.rstrip('/')}/{settings.wazuh_alerts_index}/_search"
     own = client is None

@@ -44,7 +44,7 @@ def test_compute_stats_shapes_and_counts():
         st = compute_stats(s)
 
     assert st["kpis"] == {"alerts": 3, "incidents": 2, "high_incidents": 1, "hosts": 2}
-    assert st["severity"] == {"low": 0, "medium": 1, "high": 1}
+    assert st["severity"] == {"pending": 0, "low": 0, "medium": 1, "high": 1}
     assert st["verdict_dist"] == {"benign": 0, "suspicious": 0, "malicious": 0}  # no verdicts seeded
     # [label, count, severity]; no verdicts seeded -> severity "low"
     assert ["203.0.113.44", 2, "low"] in st["by_src_ip"]

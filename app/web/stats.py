@@ -10,6 +10,7 @@ from datetime import timezone
 from sqlmodel import Session, func, select
 
 from app.config import settings
+from app.correlation.engine import techniques_for
 from app.db.models import Alert, Incident, IncidentAlert, Verdict
 
 TOP_N = 10
@@ -34,6 +35,7 @@ def compute_stats(session: Session, since=None, until=None) -> dict:
     incidents = [i for i in session.exec(select(Incident)).all() if i.id in inc_ids]
     verdict_rows = [v for v in session.exec(select(Verdict)).all() if v.alert_id in alert_ids]
     verdict = {v.alert_id: v.verdict for v in verdict_rows}
+    guess = {v.alert_id: v.mitre_technique for v in verdict_rows}  # LLM technique, fallback only
 
     hosts = {a.agent_name for a in alerts if a.agent_name and a.id in {x.alert_id for x in links}}
     severity = Counter(i.severity for i in incidents)
@@ -52,12 +54,15 @@ def compute_stats(session: Session, since=None, until=None) -> dict:
             "total": session.exec(select(func.count()).select_from(Alert)).one(),
         },
         "window_minutes": settings.correlation_window_minutes,
-        "severity": {k: severity.get(k, 0) for k in ("low", "medium", "high")},
+        "severity": {k: severity.get(k, 0) for k in ("pending", "low", "medium", "high")},
         "verdict_dist": {k: vdist.get(k, 0) for k in ("benign", "suspicious", "malicious")},
         "by_src_ip": _top(alerts, verdict, lambda a: a.src_ip),
         "by_host": _top(alerts, verdict, lambda a: a.agent_name),
         "by_rule": _top(alerts, verdict, lambda a: f"{a.rule_id} {a.rule_description}"),
-        "by_mitre": _top_pairs((v.mitre_technique, _RANK.get(v.verdict, 0)) for v in verdict_rows),
+        "by_mitre": _top_pairs(
+            (t, _RANK.get(verdict.get(a.id, "benign"), 0))
+            for a in alerts for t in techniques_for(a, guess.get(a.id))
+        ),
         # raw feed: [epoch_ms, incident_id or 0] per alert. The heatmap and timeline
         # are bucketed from this in charts.js, in the viewer's local zone.
         "events": sorted(

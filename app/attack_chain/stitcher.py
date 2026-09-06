@@ -11,7 +11,7 @@ from collections import Counter, defaultdict
 from sqlmodel import Session, delete, select
 
 from app.config import settings
-from app.correlation.engine import entities
+from app.correlation.engine import entities, techniques_for
 from app.db.models import Alert, AttackChain, AttackChainIncident, Incident, IncidentAlert, Verdict
 from app.db.session import get_session, init_db
 
@@ -44,9 +44,10 @@ def _incident_tactics(alerts: list[Alert], technique_by_alert: dict[int, str | N
     for a in alerts:
         raw = json.loads(a.raw_json)
         tactics.update(raw.get("rule", {}).get("mitre", {}).get("tactic", []) or [])
-        tech = technique_by_alert.get(a.id)
-        if tech and tech in _TECHNIQUE_TACTIC:
-            tactics.add(_TECHNIQUE_TACTIC[tech])
+        # native rule.mitre.id first (via techniques_for), then the model's guess
+        for tech in techniques_for(a, technique_by_alert.get(a.id)):
+            if tech in _TECHNIQUE_TACTIC:
+                tactics.add(_TECHNIQUE_TACTIC[tech])
     return tactics
 
 
