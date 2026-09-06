@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Reset the password{% endblock %}
+{% block breadcrumb %}<a href="/login">Sign in</a><span class="sep">›</span><span class="here">Reset</span>{% endblock %}
+{% block body %}
+<h1>Reset the dashboard password</h1>
+<p class="subtle">This is a self-hosted single-user dashboard. Recovery is done from the
+deployment, not by email.</p>
+
+<h2 class="section">If you set a custom password in Settings and forgot it</h2>
+<ol class="body" style="line-height:1.7">
+  <li>In <code>.env</code>, set <code>DASHBOARD_PASSWORD_RESET=true</code>.</li>
+  <li>Restart the app (or the container). Startup wipes the custom credential and logs it.</li>
+  <li>Sign in with the <code>.env</code> credentials
+    (<code>DASHBOARD_USER</code> / <code>DASHBOARD_PASSWORD</code>, ships as
+    <code>admin</code> / <code>admin</code>).</li>
+  <li>Open <a href="/settings">Settings</a> and set a new username and password.</li>
+  <li>Set <code>DASHBOARD_PASSWORD_RESET</code> back to <code>false</code>.</li>
+</ol>
+
+<h2 class="section">If you only changed the .env password and forgot it</h2>
+<p>Edit <code>DASHBOARD_PASSWORD</code> in <code>.env</code> to a new value and restart.
+No reset flag needed while no custom credential is set.</p>
+
+<p style="margin-top:1.5rem"><a href="/login">Back to sign in</a></p>
+{% endblock %}

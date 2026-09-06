@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Settings{% endblock %}
+{% block breadcrumb %}<span class="here">Settings</span>{% endblock %}
+{% block body %}
+<h1>Settings</h1>
+
+<h2 class="section">Dashboard credentials</h2>
+{% if ok %}<p class="subtle" style="color:var(--sev-low)">Saved. The custom credential is now
+in effect and the <code>.env</code> password no longer works.</p>{% endif %}
+{% if bad == "current" %}<p class="subtle" style="color:var(--sev-high)">Current password is
+wrong.</p>{% endif %}
+{% if bad == "weak" %}<p class="subtle" style="color:var(--sev-high)">Pick a username and a
+password of at least 8 characters.</p>{% endif %}
+
+<p class="subtle">
+  {% if custom %}A custom credential is set. It supersedes <code>DASHBOARD_PASSWORD</code>
+  from <code>.env</code>. Forgot it? See <a href="/login/help">reset</a>.
+  {% else %}Login currently uses the <code>.env</code> credentials. Setting one here replaces
+  them, and <code>DASHBOARD_PASSWORD</code> stops working until you reset.
+  {% endif %}
+</p>
+
+<form method="post" action="/settings/credentials" style="display:grid;gap:.6rem;max-width:320px;margin-top:1rem">
+  {{ csrf_field(request) }}
+  <label style="font-size:12px;color:var(--muted)">Current password
+    <input type="password" name="current_password" autocomplete="current-password" required
+           style="display:block;width:100%">
+  </label>
+  <label style="font-size:12px;color:var(--muted)">New username
+    <input type="text" name="new_username" value="{{ user }}" autocomplete="username" required
+           style="display:block;width:100%">
+  </label>
+  <label style="font-size:12px;color:var(--muted)">New password (8+ chars)
+    <input type="password" name="new_password" autocomplete="new-password" minlength="8" required
+           style="display:block;width:100%">
+  </label>
+  <button class="btn-approve" type="submit">Save credentials</button>
+</form>
+
+<form method="post" action="/logout" style="margin-top:1.5rem">
+  <button type="submit" style="font-size:12px;padding:.25rem .6rem;background:var(--card);
+    color:var(--text);border:1px solid var(--border);border-radius:4px;cursor:pointer">Sign out</button>
+</form>
+{% endblock %}

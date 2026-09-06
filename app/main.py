@@ -12,7 +12,7 @@ from fastapi.responses import PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.config import settings
-from app.db.session import init_db
+from app.db.session import get_session, init_db
 from app.pipeline import run_pipeline_cycle
 from app.web import auth
 from app.web.routes import router
@@ -49,18 +49,25 @@ async def lifespan(_: FastAPI):
 app = FastAPI(title="zuumb", lifespan=lifespan)
 init_db()
 
-if not settings.dashboard_password:
-    log.warning("DASHBOARD_PASSWORD is not set: the dashboard and the /tasks/*/approve "
-                "endpoint are UNAUTHENTICATED. Set it before exposing this off localhost.")
+if settings.dashboard_password_reset:
+    with get_session() as _s:
+        _wiped = auth.clear_credential(_s)
+    log.warning("DASHBOARD_PASSWORD_RESET is set: %s. Sign in with the .env credentials, "
+                "set a new password in Settings, then unset the flag.",
+                "custom credential wiped" if _wiped else "no custom credential to wipe")
 
+if not auth.auth_enabled():
+    log.warning("No dashboard credential: DASHBOARD_PASSWORD is blank and none was set "
+                "in Settings. The dashboard and /tasks/*/approve are UNAUTHENTICATED.")
+
+_OPEN = ("/login", "/login/help", "/logout")
 
 
 @app.middleware("http")
 async def _auth_gate(request: Request, call_next):
     """Login gate. CSRF is enforced per-route via auth.require_csrf."""
     path = request.url.path
-    if (not auth.auth_enabled() or path in ("/login", "/logout")
-            or path.startswith("/static/")):
+    if not auth.auth_enabled() or path in _OPEN or path.startswith("/static/"):
         return await call_next(request)
     if auth.read_session(request) is not None:
         return await call_next(request)

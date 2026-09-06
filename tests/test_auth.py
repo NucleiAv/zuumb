@@ -1,10 +1,18 @@
-"""Group A / item 1: session login + CSRF (only active when DASHBOARD_PASSWORD is set)."""
+"""Group A / item 1: session login + CSRF + custom credentials + password reset."""
 import pytest
 from fastapi.testclient import TestClient
 
 from app.config import settings
+from app.db.session import get_session
 from app.main import app
-from app.web.auth import _make_cookie, read_session
+from app.web.auth import (
+    _make_cookie,
+    check_login,
+    clear_credential,
+    get_credential,
+    read_session,
+    set_credential,
+)
 
 
 @pytest.fixture
@@ -64,6 +72,66 @@ def test_logout_clears_the_session(secured):
     assert r.status_code == 303
     secured.cookies.clear()
     assert secured.get("/").status_code == 303  # back to the login redirect
+
+
+# --- custom credentials + reset --------------------------------------------
+
+@pytest.fixture
+def env_creds(monkeypatch):
+    monkeypatch.setattr(settings, "dashboard_user", "admin")
+    monkeypatch.setattr(settings, "dashboard_password", "admin")
+    monkeypatch.setattr(settings, "session_secret", "unit-test-secret")
+
+
+def test_env_default_credentials_work(env_creds):
+    assert check_login("admin", "admin") is True
+    assert check_login("admin", "nope") is False
+
+
+def test_custom_credential_supersedes_the_env_password(env_creds):
+    with get_session() as s:
+        set_credential(s, "opsec", "longenough1")
+    # the .env admin/admin no longer works; the custom one does
+    assert check_login("admin", "admin") is False
+    assert check_login("opsec", "longenough1") is True
+
+
+def test_settings_change_needs_current_password_and_a_real_new_one(env_creds):
+    c = TestClient(app, follow_redirects=False)
+    c.cookies.set("zuumb_session", _make_cookie("admin"))
+    csrf = read_session(_Req(c.cookies["zuumb_session"]))["csrf"]
+
+    wrong = c.post("/settings/credentials", data={
+        "current_password": "WRONG", "new_username": "opsec",
+        "new_password": "longenough1", "_csrf": csrf})
+    assert wrong.headers["location"] == "/settings?bad=current"
+
+    weak = c.post("/settings/credentials", data={
+        "current_password": "admin", "new_username": "opsec",
+        "new_password": "short", "_csrf": csrf})
+    assert weak.headers["location"] == "/settings?bad=weak"
+
+    good = c.post("/settings/credentials", data={
+        "current_password": "admin", "new_username": "opsec",
+        "new_password": "longenough1", "_csrf": csrf})
+    assert good.headers["location"] == "/settings?ok=1"
+    assert check_login("opsec", "longenough1") and not check_login("admin", "admin")
+
+
+def test_password_reset_flag_wipes_the_custom_credential(env_creds):
+    with get_session() as s:
+        set_credential(s, "opsec", "longenough1")
+        assert get_credential(s) is not None
+    # what main.py does on startup when DASHBOARD_PASSWORD_RESET is set
+    with get_session() as s:
+        assert clear_credential(s) is True
+    assert check_login("admin", "admin") is True          # back to .env creds
+    assert check_login("opsec", "longenough1") is False
+
+
+def test_forgot_password_page_is_reachable_without_a_session(secured):
+    r = secured.get("/login/help")
+    assert r.status_code == 200 and "DASHBOARD_PASSWORD_RESET" in r.text
 
 
 class _Req:
