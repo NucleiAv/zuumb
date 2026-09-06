@@ -28,8 +28,8 @@ class _FakeClient:
     def __init__(self, alerts): self.alerts, self.last_body = alerts, None
     def post(self, url, json):
         self.last_body = json
-        rng = json["query"].get("range", {}).get("timestamp", {}).get("gt")
-        keep = [a for a in self.alerts if rng is None or a["timestamp"] > rng]
+        rng = json["query"].get("range", {}).get("timestamp", {}).get("gte")
+        keep = [a for a in self.alerts if rng is None or a["timestamp"] >= rng]
         return _FakeResp(sorted(keep, key=lambda a: a["timestamp"]))
 
 
@@ -40,7 +40,8 @@ def test_fetch_alerts_since_builds_search_and_unwraps_source():
     since = datetime(2026, 8, 28, 14, 30)
     out = fetch_alerts_since(since, client=fc)
     assert [a["id"] for a in out] == ["a2"]                       # range filter applied
-    assert fc.last_body["query"]["range"]["timestamp"]["gt"].startswith("2026-08-28T14:30")
+    # gte with a 120s lookback; dedupe on wazuh_alert_id absorbs the re-fetched overlap
+    assert fc.last_body["query"]["range"]["timestamp"]["gte"].startswith("2026-08-28T14:28")
     assert fc.last_body["sort"] == [{"timestamp": "asc"}]
 
 
@@ -67,8 +68,8 @@ def test_poll_once_uses_max_timestamp_as_cursor():
     assert poll_once(client=fc) == 3                              # empty DB -> match_all
     assert fc.last_body["query"] == {"match_all": {}}
 
-    assert poll_once(client=fc) == 0                              # cursor now at p3's ts
-    assert fc.last_body["query"]["range"]["timestamp"]["gt"].startswith("2026-08-28T16:00")
+    assert poll_once(client=fc) == 0                              # cursor at p3's ts, overlap deduped
+    assert fc.last_body["query"]["range"]["timestamp"]["gte"].startswith("2026-08-28T15:58")
 
     fc.alerts.append(_wazuh_alert("p4", "2026-08-28T17:00:00.000+0000"))
     assert poll_once(client=fc) == 1

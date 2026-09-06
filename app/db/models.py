@@ -18,6 +18,7 @@ class Alert(SQLModel, table=True):
     src_ip: str | None = None
     dst_ip: str | None = None
     user: str | None = None
+    mitre_techniques: str | None = None  # native rule.mitre.id, comma-joined; preferred over the LLM guess
     raw_json: str  # original Wazuh alert, verbatim
 
 

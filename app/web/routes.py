@@ -10,7 +10,7 @@ from fastapi.templating import Jinja2Templates
 from sqlmodel import select
 
 from app.attack_chain.stitcher import TACTIC_ORDER, _incident_tactics, stage_label
-from app.correlation.engine import entities, incident_severity
+from app.correlation.engine import _analyst_verdicts, entities, incident_severity
 from app.config import settings
 from app.db.models import (
     Alert,
@@ -101,8 +101,11 @@ def incidents_list(request: Request):
                 aq = aq.where(_FILTER_COLS[k] == v)
             narrow(set(s.exec(aq).all()))
         if mitre:
-            narrow({v.alert_id for v in
-                    s.exec(select(Verdict).where(Verdict.mitre_technique == mitre)).all()})
+            by_guess = {v.alert_id for v in
+                        s.exec(select(Verdict).where(Verdict.mitre_technique == mitre)).all()}
+            by_native = {a.id for a in s.exec(
+                select(Alert).where(Alert.mitre_techniques.contains(mitre))).all()}
+            narrow(by_guess | by_native)
         if verdict:
             narrow({v.alert_id for v in
                     s.exec(select(Verdict).where(Verdict.verdict == verdict)).all()})
@@ -389,12 +392,13 @@ def verdict_override(
                 s.exec(select(IncidentAlert).where(IncidentAlert.incident_id == incident.id)).all()
             ]
             alerts = s.exec(select(Alert).where(Alert.id.in_(alert_ids))).all()
-            verdicts = {
+            model_v = {
                 v.alert_id: v.verdict for v in
                 s.exec(select(Verdict).where(Verdict.alert_id.in_(alert_ids))).all()
             }
-            verdicts[verdict.alert_id] = analyst_verdict  # analyst's call wins for this alert
-            new_severity = incident_severity(alerts, verdicts)
+            # same analyst-aware computation correlate() uses, so the next rebuild
+            # keeps this severity instead of overwriting it (item 8)
+            new_severity = incident_severity(alerts, model_v, _analyst_verdicts(s))
             incident.severity = new_severity
             s.commit()
 
