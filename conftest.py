@@ -5,6 +5,10 @@ import tempfile
 
 os.environ.setdefault("DATABASE_URL", f"sqlite:///{tempfile.mkdtemp()}/test.db".replace("\\", "/"))
 os.environ.setdefault("ANTHROPIC_API_KEY", "test-key-not-used")
+# Auth is opt-in per test (see test_auth.py). Hard-set so a stray shell var or a
+# .env with DASHBOARD_PASSWORD=admin can't switch the whole suite to authed.
+os.environ["DASHBOARD_PASSWORD"] = ""
+os.environ["DASHBOARD_PASSWORD_RESET"] = "false"
 
 import pytest  # noqa: E402
 from sqlmodel import SQLModel  # noqa: E402

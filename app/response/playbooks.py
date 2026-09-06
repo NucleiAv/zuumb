@@ -46,20 +46,26 @@ _FALLBACK = {"type": "investigation", "priority": "medium",
              "title": "Triage the alert, confirm scope, and document findings"}
 
 
-def _action_context(alerts: list[Alert], verdict_by_alert: dict[int, str]) -> dict:
-    """From the incident's attack-signal alerts: an ip, a user, and the Wazuh
-    agent id to target. Any may stay None."""
-    signal = [
+def _signal_alerts(alerts: list[Alert], verdict_by_alert: dict[int, str]) -> list[Alert]:
+    """The alerts that carry an attack signal (non-benign verdict or an `attack`
+    rule group). Falls back to all alerts when none stand out."""
+    return [
         a for a in alerts
         if verdict_by_alert.get(a.id) in ("malicious", "suspicious")
         or "attack" in json.loads(a.raw_json).get("rule", {}).get("groups", [])
     ] or alerts
-    ctx = {"ip": None, "user": None, "agent": None}
+
+
+def _resolve_action(need: str, signal: list[Alert]) -> tuple[str, str] | None:
+    """(target, agent_id) for one action, both taken from a SINGLE alert so the
+    target is never paired with an agent that never observed it. `need` is
+    'ip' or 'user'. None when no single alert carries both."""
     for a in signal:
-        ctx["ip"] = ctx["ip"] or a.src_ip
-        ctx["user"] = ctx["user"] or a.user
-        ctx["agent"] = ctx["agent"] or json.loads(a.raw_json).get("agent", {}).get("id")
-    return ctx
+        target = a.src_ip if need == "ip" else a.user
+        agent = json.loads(a.raw_json).get("agent", {}).get("id")
+        if target and agent:
+            return target, agent
+    return None
 
 
 def _signals(alerts: list[Alert], technique_by_alert: dict[int, str | None]) -> tuple[set[str], set[str]]:
@@ -80,7 +86,7 @@ def suggest(incident_id: int, alerts: list[Alert], technique_by_alert: dict[int,
             verdict_by_alert: dict[int, str] | None = None) -> list[Task]:
     """Proposed (unsaved) Task rows for one incident. Pure — no DB, no side effects."""
     techniques, groups = _signals(alerts, technique_by_alert)
-    ctx = _action_context(alerts, verdict_by_alert or {})
+    signal = _signal_alerts(alerts, verdict_by_alert or {})
     seen: set[str] = set()
     tasks: list[Task] = []
     for pb in PLAYBOOKS:
@@ -88,10 +94,11 @@ def suggest(incident_id: int, alerts: list[Alert], technique_by_alert: dict[int,
             seen.add(pb["title"])
             task = Task(incident_id=incident_id, type=pb["type"],
                         title=pb["title"], priority=pb["priority"])
-            if pb.get("action") and ctx[pb["needs"]] and ctx["agent"]:
-                task.action = pb["action"]
-                task.action_target = ctx[pb["needs"]]
-                task.agent_id = ctx["agent"]
+            if pb.get("action"):
+                resolved = _resolve_action(pb["needs"], signal)
+                if resolved:
+                    task.action = pb["action"]
+                    task.action_target, task.agent_id = resolved
             tasks.append(task)
     if not tasks and "attack" in groups:
         tasks.append(Task(incident_id=incident_id, **_FALLBACK))

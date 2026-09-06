@@ -323,7 +323,9 @@ def _seed_two_days():
             s.add(a); s.commit(); s.refresh(a)
             s.add(Verdict(alert_id=a.id, verdict="suspicious", confidence=0.5,
                           reasoning_text="x", model_version="t", mitre_technique=tech))
-            inc = Incident(title=host, severity="low")
+            # created_at pinned to the alert day, as correlate() does — otherwise
+            # both incidents get near-identical _now() and the sort tiebreak flips.
+            inc = Incident(title=host, severity="low", created_at=ts)
             s.add(inc); s.commit(); s.refresh(inc)
             s.add(IncidentAlert(incident_id=inc.id, alert_id=a.id)); s.commit()
             ids[host] = inc.id

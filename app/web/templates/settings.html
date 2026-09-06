@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Settings{% endblock %}
+{% block breadcrumb %}<span class="here">Settings</span>{% endblock %}
+{% block body %}
+<h1>Settings</h1>
+
+<h2 class="section">Dashboard credentials</h2>
+{% if ok %}<p class="subtle" style="color:var(--sev-low)">Saved. The custom credential is now
+in effect and the <code>.env</code> password no longer works.</p>{% endif %}
+{% if bad == "current" %}<p class="subtle" style="color:var(--sev-high)">Current password is
+wrong.</p>{% endif %}
+{% if bad == "weak" %}<p class="subtle" style="color:var(--sev-high)">Pick a username and a
+password of at least 8 characters.</p>{% endif %}
+
+<p class="subtle">
+  {% if custom %}A custom credential is set. It supersedes <code>DASHBOARD_PASSWORD</code>
+  from <code>.env</code>. Forgot it? See <a href="/login/help">reset</a>.
+  {% else %}Login currently uses the <code>.env</code> credentials. Setting one here replaces
+  them, and <code>DASHBOARD_PASSWORD</code> stops working until you reset.
+  {% endif %}
+</p>
+
+<style>
+  .cred-form { display:grid; gap:.15rem; max-width:340px; margin-top:1rem; }
+  .cred-form label { font-size:11px; text-transform:uppercase; letter-spacing:.08em;
+    color:var(--muted); margin:.5rem 0 .25rem; }
+  .cred-form input { padding:.5rem .6rem; font:inherit; color:var(--text);
+    background:var(--bg); border:1px solid var(--border); border-radius:6px; }
+  .cred-form input:focus { outline:none; border-color:var(--accent); }
+  .cred-form button { margin-top:.9rem; }
+</style>
+<form method="post" action="/settings/credentials" class="cred-form">
+  {{ csrf_field(request) }}
+  <label for="cp">Current password</label>
+  <input id="cp" type="password" name="current_password" autocomplete="current-password" required>
+  <label for="nu">New username</label>
+  <input id="nu" type="text" name="new_username" value="{{ user }}" autocomplete="username" required>
+  <label for="np">New password (8+ characters)</label>
+  <input id="np" type="password" name="new_password" autocomplete="new-password" minlength="8" required>
+  <button class="btn-approve" type="submit">Save credentials</button>
+</form>
+{% endblock %}

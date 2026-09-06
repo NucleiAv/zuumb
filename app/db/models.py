@@ -64,7 +64,7 @@ class Task(SQLModel, table=True):
     incident_id: int = Field(foreign_key="incident.id", index=True)
     type: str  # investigation | mitigation
     title: str
-    status: str = "todo"  # todo | in_progress | done
+    status: str = "todo"  # todo | in_progress | done | failed (live dispatch rejected)
     priority: str = "medium"  # low | medium | high
     assignee: str | None = None
     # Phase 14: set only on tasks that map to an allowlisted active-response action.
@@ -95,3 +95,14 @@ class AnalystFeedback(SQLModel, table=True):
     analyst_verdict: str  # benign | suspicious | malicious
     note: str = ""
     created_at: datetime = Field(default_factory=_now)
+
+
+class Credential(SQLModel, table=True):
+    """Single-row (id=1) override for the .env dashboard login. Present only after
+    the user sets their own credentials from the Settings page; while it exists,
+    settings.dashboard_password is ignored for login."""
+    id: int | None = Field(default=1, primary_key=True)
+    username: str
+    pw_hash: str  # pbkdf2_hmac(sha256) hex
+    pw_salt: str  # hex
+    updated_at: datetime = Field(default_factory=_now)

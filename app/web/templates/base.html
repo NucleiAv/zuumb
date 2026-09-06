@@ -267,8 +267,17 @@
     <a href="/" class="{{ 'active' if path == '/' or path.startswith('/incidents') }}">Incidents</a>
     <a href="/chains" class="{{ 'active' if path.startswith('/chains') }}">Chains</a>
     <a href="/audit" class="{{ 'active' if path.startswith('/audit') }}">Audit</a>
+    {% if show_account_menu(request) %}
+    <a href="/settings" class="{{ 'active' if path.startswith('/settings') }}">Settings</a>
+    {% endif %}
   </nav>
   <span class="spacer"></span>
+  {% if show_account_menu(request) %}
+  <form method="post" action="/logout" style="display:inline;margin-right:.5rem">
+    <button type="submit" style="font-size:12px;padding:.3rem .5rem;background:var(--card);
+      color:var(--muted);border:1px solid var(--border);border-radius:4px;cursor:pointer">Sign out</button>
+  </form>
+  {% endif %}
   <button id="theme-toggle" type="button" aria-label="Toggle light/dark theme">🌙</button>
 </div>
 <nav class="breadcrumb" aria-label="Breadcrumb">

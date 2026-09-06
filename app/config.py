@@ -19,6 +19,18 @@ class Settings(BaseSettings):
 
     database_url: str = "sqlite:///./zuumb.db"
 
+    # Dashboard auth. Ships as admin / admin. Change these, or set your own
+    # username+password from the in-app Settings page (which then supersedes
+    # these and this password stops working). Blank dashboard_password turns
+    # auth OFF entirely (dev/test only; startup logs a warning).
+    # dashboard_password_reset=true wipes a Settings-set password on the next
+    # start, so you fall back to these .env credentials. session_secret signs the
+    # login cookie; set it in prod so sessions survive a restart.
+    dashboard_user: str = "admin"
+    dashboard_password: str = "admin"
+    dashboard_password_reset: bool = False
+    session_secret: str = ""
+
     correlation_window_minutes: int = 30
     # chain stitcher: an entity in more incidents than this is a hub (proxy/jump box),
     # not a real link — dropped so it can't stitch unrelated incidents into one chain.

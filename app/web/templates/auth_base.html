@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}zuumb{% endblock %}</title>
+<link rel="icon" id="favicon" href="/static/logo-favicon-light.png">
+<script>
+  (function () {
+    var t = 'light';
+    try {
+      t = localStorage.getItem('theme');
+      if (t !== 'light' && t !== 'dark') {
+        t = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+      }
+      document.documentElement.setAttribute('data-theme', t);
+    } catch (e) {}
+    var f = document.getElementById('favicon');
+    if (f) f.href = '/static/logo-favicon-' + t + '.png';
+  })();
+</script>
+<style>
+  :root, :root[data-theme="light"] {
+    --bg:#ffffff; --text:#36373b; --accent:#1952e9; --muted:#6b6c70;
+    --border:#e3e4e8; --card:#f7f8fa; --sev-high:#e5484d; --sev-low:#1a7f37;
+    color-scheme:light;
+  }
+  :root[data-theme="dark"] {
+    --bg:#000000; --text:#ababab; --accent:#5b8def; --muted:#6f6f6f;
+    --border:#242424; --card:#0b0b0b; --sev-high:#ff6b70; --sev-low:#3fb950;
+    color-scheme:dark;
+  }
+  * { box-sizing:border-box; }
+  body {
+    margin:0; min-height:100vh; display:grid; place-items:center; padding:24px;
+    font:14px/1.55 system-ui, sans-serif; color:var(--text); background:var(--bg);
+  }
+  a { color:var(--accent); text-decoration:none; }
+  a:hover { text-decoration:underline; }
+
+  .auth { width:100%; max-width:360px; }
+  .auth .brand { display:flex; justify-content:center; margin-bottom:26px; }
+  .auth .brand img { height:30px; width:auto; display:block; }
+  .auth .brand .logo-dark { display:none; }
+  :root[data-theme="dark"] .auth .brand .logo-light { display:none; }
+  :root[data-theme="dark"] .auth .brand .logo-dark { display:block; }
+
+  .card {
+    border:1px solid var(--border); border-radius:12px; background:var(--card);
+    padding:28px 26px;
+  }
+  .card h1 { margin:0 0 4px; font-size:19px; font-weight:600; color:var(--text); }
+  .card .sub { margin:0 0 20px; font-size:12.5px; color:var(--muted); }
+  .card label {
+    display:block; font-size:11px; text-transform:uppercase; letter-spacing:.08em;
+    color:var(--muted); margin-bottom:5px;
+  }
+  .card input[type=text], .card input[type=password] {
+    width:100%; padding:.55rem .65rem; font:inherit; color:var(--text);
+    background:var(--bg); border:1px solid var(--border); border-radius:7px; margin-bottom:14px;
+  }
+  .card input:focus { outline:none; border-color:var(--accent); }
+  .card button.primary {
+    width:100%; padding:.6rem; font:inherit; font-weight:600; cursor:pointer; margin-top:2px;
+    color:#fff; background:var(--accent); border:1px solid var(--accent); border-radius:7px;
+  }
+  .card button.primary:hover { filter:brightness(1.08); }
+  .err { font-size:12.5px; color:var(--sev-high); margin:0 0 14px; }
+  .ok  { font-size:12.5px; color:var(--sev-low); margin:0 0 14px; }
+
+  .auth .foot { margin-top:16px; text-align:center; font-size:12.5px; color:var(--muted); }
+
+  .prose { font-size:13.5px; line-height:1.7; }
+  .prose h2 {
+    font-size:11px; text-transform:uppercase; letter-spacing:.08em; color:var(--muted);
+    margin:20px 0 6px;
+  }
+  .prose ol { padding-left:20px; margin:8px 0; }
+  .prose code {
+    background:var(--bg); border:1px solid var(--border); border-radius:4px;
+    padding:1px 5px; font-size:.9em;
+  }
+</style>
+</head>
+<body>
+<div class="auth">
+  <a class="brand" href="/">
+    <img class="logo-light" src="/static/logo-light.png" alt="zuumb">
+    <img class="logo-dark" src="/static/logo-dark.png" alt="zuumb">
+  </a>
+  {% block body %}{% endblock %}
+</div>
+</body>
+</html>
