@@ -10,3 +10,6 @@ jinja2
 python-multipart  # FastAPI form parsing (verdict-override form)
 
 apscheduler  # Phase 12: background Wazuh polling
+
+drain3  # Detection track D1: auth-log template mining (detectors/authlog/parse.py)
+pyod  # Detection track D1: ECOD anomaly scoring (detectors/authlog/model.py); pulls scikit-learn
