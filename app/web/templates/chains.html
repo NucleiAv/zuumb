@@ -3,18 +3,21 @@
 {% block breadcrumb %}<span class="here">Attack chains</span>{% endblock %}
 {% block body %}
 <h1>Attack chains ({{ rows|length }})</h1>
-<p class="subtle">incidents linked by a shared entity, ordered by MITRE ATT&amp;CK tactic</p>
+<p class="subtle">A chain is a <b>grouping hypothesis</b>: medium/high incidents that share a host, IP or user
+  within a time window, ordered by MITRE ATT&amp;CK tactic. It is not a proven timeline — check the
+  confidence column and review the incidents before treating one as a single attack.</p>
 
 {% if rows %}
 <table>
   <thead>
-    <tr><th>ID</th><th>Narrative</th><th>Stages</th><th>Severity</th><th>Alerts</th><th>Status</th><th>Created</th></tr>
+    <tr><th>ID</th><th>Narrative</th><th>Confidence</th><th>Stages</th><th>Severity</th><th>Alerts</th><th>Status</th><th>Created</th></tr>
   </thead>
   <tbody>
   {% for r in rows %}
     <tr>
       <td><a href="/chains/{{ r.chain.id }}">{{ r.chain.id }}</a></td>
       <td><a href="/chains/{{ r.chain.id }}">{{ r.chain.title }}</a></td>
+      <td><span class="conf conf-{{ r.chain.confidence or 'medium' }}">{{ r.chain.confidence or 'medium' }}</span></td>
       <td>{{ r.stages }}</td>
       <td class="sev-{{ r.severity }}">{{ r.severity }}</td>
       <td>{{ r.alerts }}</td>
@@ -25,6 +28,6 @@
   </tbody>
 </table>
 {% else %}
-<p class="muted">No attack chains. They form when two or more medium/high-severity incidents share a host, IP or user.</p>
+<p class="muted">No attack chains. They form when two or more medium/high-severity incidents share a host, IP or user within the link window.</p>
 {% endif %}
 {% endblock %}

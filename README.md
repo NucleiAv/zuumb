@@ -316,26 +316,52 @@ wsl bash scripts/lab-up.sh     # Wazuh stack -> wait for indexer -> agents -> pr
 .venv/Scripts/python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
-## Tuning attack chains on real traffic
+## Attack chains — what they are and aren't
 
-Let live data accumulate for a few days, then check chain quality:
+An attack chain is a **grouping hypothesis**, not a proven forensic timeline or
+attacker attribution. zuumb takes medium/high-severity incidents that share a
+host, IP, or user **within a time window**, orders them by MITRE ATT&CK tactic,
+and calls that a chain. It does **not** verify that one stage caused the next,
+and the tactic ordering is by kill-chain phase, not by observed progression. A
+Monday recon scan and an unrelated Thursday file transfer on the same host are
+not one attack, even though the grouping would put them in sequence.
+
+To keep a coincidence from reading like a real multi-stage attack, every chain
+carries a **confidence** score (`high` / `medium` / `low`), computed at build
+time and shown on the chains list and detail pages. It is downgraded for: a
+single shared host being the only link (jump-box shape), stages linked only
+transitively, a large time gap between linked stages, tactic labels guessed from
+technique ids rather than taken from Wazuh's own mapping, or the whole chain
+resting on one shared entity. A `low`-confidence chain shows an unmissable
+warning on its detail page. Analysts can additionally mark a chain
+`confirmed-narrative` or `false-chain` — that human causation call is separate
+from the system's confidence score.
+
+Treat any chain as a lead to review, not a conclusion. The eval-numbers framing
+applies here too: directional, not certified.
+
+### Tuning on real traffic
+
+Let live data accumulate for a few days, then run the CLI diagnostic:
 
 ```bash
 python -m scripts.chain_quality
 ```
 
-It prints, per chain, the entities that join each pair of adjacent stages, and
-flags two false-chain shapes:
+It prints, per chain, its confidence, the entities joining each adjacent stage
+pair, and a flag for the two false-chain shapes the confidence score penalises:
 
 - **hub-host** — every link is one shared host (a proxy / jump box, not an attack path)
 - **weak-link** — adjacent stages share no entity directly (stitched only transitively)
 
-Knobs (both `.env`-overridable):
+Knobs (all `.env`-overridable):
 
 | var | default | when to change |
 |-----|---------|----------------|
 | `CORRELATION_WINDOW_MINUTES` | `30` | shrink if noisy traffic over-merges unrelated alerts into one incident |
 | `CHAIN_MAX_ENTITY_SPREAD` | `4` | lower if a busy shared host keeps stitching unrelated incidents together |
+| `CHAIN_STRONG_LINK_HOURS` | `24` | stages linking within this gap keep full confidence |
+| `CHAIN_MAX_LINK_HOURS` | `72` | beyond this gap, incidents don't link into a chain at all |
 
 ## Automated mitigation (active response, Phase 14)
 
