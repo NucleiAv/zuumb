@@ -105,3 +105,25 @@ def test_triage_pending_only_hits_untriaged():
     with get_session() as s:
         assert triage_pending(s, call=_benign) == 1
         assert triage_pending(s, call=_benign) == 0
+
+
+def test_triage_failure_is_isolated_and_quarantined_after_the_cap(monkeypatch):
+    from app.config import settings
+    from app.db.models import DeadLetter
+    from sqlmodel import select as _sel
+    monkeypatch.setattr(settings, "triage_max_attempts", 2)
+    ingest_alerts([_wazuh_alert("poison", "2026-08-28T14:00:00.000+0000", desc="POISON alert"),
+                   _wazuh_alert("fine", "2026-08-28T14:05:00.000+0000", desc="ordinary")])
+
+    def call(system, user):
+        if "POISON" in user:
+            raise RuntimeError("model returned no tool call")
+        return _benign(system, user)
+
+    with get_session() as s:
+        assert triage_pending(s, call=call) == 1        # "fine" still triaged despite "poison" failing
+        assert triage_pending(s, call=call) == 0        # only "poison" left; fails again (attempt 2)
+        assert s.exec(_sel(DeadLetter)).one().attempts == 2
+        # cap reached -> "poison" is no longer even attempted (no third failure logged)
+        triage_pending(s, call=call)
+        assert s.exec(_sel(DeadLetter)).one().attempts == 2

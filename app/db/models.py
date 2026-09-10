@@ -98,6 +98,19 @@ class AnalystFeedback(SQLModel, table=True):
     created_at: datetime = Field(default_factory=_now)
 
 
+class DeadLetter(SQLModel, table=True):
+    """A record that failed to process. One row per (source, key); `attempts`
+    counts retries. Keeps a poison alert or model response from stalling the
+    pipeline — once attempts hits the cap, that record is skipped for good."""
+    id: int | None = Field(default=None, primary_key=True)
+    source: str = Field(index=True)  # ingest | triage
+    key: str = Field(index=True)     # wazuh_alert_id (ingest) or str(alert.id) (triage)
+    error: str = ""
+    attempts: int = 1
+    created_at: datetime = Field(default_factory=_now)
+    updated_at: datetime = Field(default_factory=_now)
+
+
 class Credential(SQLModel, table=True):
     """Single-row (id=1) override for the .env dashboard login. Present only after
     the user sets their own credentials from the Settings page; while it exists,

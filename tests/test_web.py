@@ -129,11 +129,13 @@ def test_alert_detail_renders_raw_data_and_stored_reasoning_only():
         aid = a.id
 
     html = client.get(f"/alerts/{aid}").text
-    # Section A — raw, verbatim, "not present" for absent fields
+    # Section A — a curated raw slice (item 14): rule/log context + the normalized fields
     assert "Section A" in html and "Section B" in html
-    assert "rule.description" in html and "data.srcip" in html and "10.0.0.9" in html
+    assert "rule_description" in html and "sshd: auth ok" in html   # normalized
+    assert "data.srcip" in html and "10.0.0.9" in html              # data.* kept
+    assert "rule.mitre.id.0" in html and "T1078" in html            # native mitre kept
     assert "not present in source" in html          # dst_ip / user are null
-    assert "raw_json (verbatim)" in html
+    assert "not shown" in html                       # the "internals not rendered" note
     # Section B — exactly the stored reasoning, labelled AI
     assert "AI-generated triage reasoning" in html
     assert "Service account login from an unusual subnet." in html

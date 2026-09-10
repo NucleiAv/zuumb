@@ -8,15 +8,19 @@
 from __future__ import annotations
 
 import json
+import logging
 from datetime import datetime, timedelta
 from pathlib import Path
 
 import httpx
 from sqlmodel import Session, func, select
 
+from app import deadletter
 from app.config import settings
 from app.db.models import Alert
 from app.db.session import get_session, init_db
+
+log = logging.getLogger("uvicorn.error")
 
 # Wazuh nests the acting user under several keys depending on the decoder.
 _USER_PATHS = (
@@ -84,7 +88,13 @@ def ingest_alerts(alerts: list[dict], session: Session | None = None) -> int:
         seen = set(session.exec(select(Alert.wazuh_alert_id)).all())
         new = []
         for raw in alerts:
-            alert = normalize_alert(raw)
+            try:
+                alert = normalize_alert(raw)          # item 12: one bad alert
+            except Exception as e:                    # can't drop the whole batch
+                key = raw.get("id", "?") if isinstance(raw, dict) else "?"
+                deadletter.record(session, "ingest", key, e)
+                log.warning("ingest: skipped a malformed alert (%s): %s", key, e)
+                continue
             if alert.wazuh_alert_id in seen:
                 continue
             seen.add(alert.wazuh_alert_id)

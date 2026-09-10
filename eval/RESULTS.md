@@ -3,6 +3,12 @@
 Labeled set: [`labeled_set.jsonl`](labeled_set.jsonl) — 34 hand-labeled synthetic Wazuh
 alerts (14 benign / 10 suspicious / 10 malicious).
 
+> **These numbers are directional, not a certified benchmark.** The set is small
+> (34 alerts), synthetic, and self-labeled by a single annotator, and the model
+> runs at its default non-zero temperature — so a re-run will land near these
+> figures but not reproduce them digit-for-digit. Read them as "the feedback loop
+> measurably helps," not as a validated accuracy claim.
+
 Reproduce: `python -m eval.run_eval [--few-shot]`
 
 ## Claude Haiku 4.5, `prompts/triage_v1.md`

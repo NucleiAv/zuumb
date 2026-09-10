@@ -9,6 +9,7 @@ from datetime import timezone
 
 from sqlmodel import Session, func, select
 
+from app import deadletter
 from app.config import settings
 from app.correlation.engine import techniques_for
 from app.db.models import Alert, Incident, IncidentAlert, Verdict
@@ -54,6 +55,7 @@ def compute_stats(session: Session, since=None, until=None) -> dict:
             "total": session.exec(select(func.count()).select_from(Alert)).one(),
         },
         "window_minutes": settings.correlation_window_minutes,
+        "quarantined": deadletter.count(session),  # records that failed ingest/triage (item 12)
         "severity": {k: severity.get(k, 0) for k in ("pending", "low", "medium", "high")},
         "verdict_dist": {k: vdist.get(k, 0) for k in ("benign", "suspicious", "malicious")},
         "by_src_ip": _top(alerts, verdict, lambda a: a.src_ip),

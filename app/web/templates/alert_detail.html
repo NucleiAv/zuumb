@@ -24,19 +24,16 @@
     </tbody>
   </table>
 
-  <h3 class="mini">Every field in the raw Wazuh alert</h3>
+  <h3 class="mini">Rule and log context from the raw alert</h3>
   <table>
     <tbody>
-    {% for path, value in raw_fields %}
+    {% for path, value in raw_context %}
       <tr><th class="fieldname">{{ path }}</th><td>{{ value if value != "" else '""' }}</td></tr>
     {% endfor %}
     </tbody>
   </table>
-
-  <details class="raw-json">
-    <summary>raw_json (verbatim)</summary>
-    <pre>{{ raw_json_pretty }}</pre>
-  </details>
+  <p class="subtle">Agent internals, cluster metadata and index bookkeeping are not shown.
+    Obvious secrets in log lines are masked.</p>
 </section>
 
 <section class="detail-section detail-ai">
