@@ -176,3 +176,74 @@ def test_scoring_is_deterministic():
     a = AuthLogAnomalyModel().fit(_baseline()).score(_baseline() + [burst])
     b = AuthLogAnomalyModel().fit(_baseline()).score(_baseline() + [burst])
     assert [s.score for s in a] == [s.score for s in b]
+
+
+# --- step 4: emit flagged windows as alerts ------------------------------------
+
+from detectors.authlog import flagged_alerts, window_to_alert  # noqa: E402
+from detectors.authlog.emit import D1_RULE_ID  # noqa: E402
+from detectors.authlog.run import run as run_detector  # noqa: E402
+
+
+def _scored(host="web-9", slot=600, counts=None, z=6.0):
+    row = _row(host, slot, counts or {1: 240, 2: 2})
+    return ScoredWindow(row=row, score=19.1, z=z, is_anomaly=True)
+
+
+def test_window_to_alert_is_accepted_by_normalize_alert():
+    from app.ingestion.wazuh_client import normalize_alert
+    a = normalize_alert(window_to_alert(_scored()))
+    assert 900001 <= int(a.rule_id) <= 900999
+    assert a.agent_name == "web-9"
+    assert a.wazuh_alert_id.startswith("ml-d1-")
+    assert a.timestamp.year == 2026
+
+
+def test_alert_id_is_stable_per_window_and_distinct_across_windows():
+    same_a, same_b = window_to_alert(_scored(slot=600)), window_to_alert(_scored(slot=600))
+    other = window_to_alert(_scored(slot=601))
+    assert same_a["id"] == same_b["id"]
+    assert other["id"] != same_a["id"]
+
+
+def test_rule_level_scales_with_z_and_is_clamped():
+    lo = window_to_alert(_scored(z=4.1))["rule"]["level"]
+    hi = window_to_alert(_scored(z=40.0))["rule"]["level"]
+    assert 9 <= lo < hi <= 13
+
+
+def test_flagged_alerts_skips_windows_below_threshold():
+    ok = ScoredWindow(row=_row("h", 1, {1: 7}), score=2.0, z=0.5, is_anomaly=False)
+    bad = _scored()
+    assert [a["rule"]["description"] for a in flagged_alerts([ok, bad])] == \
+           [window_to_alert(bad)["rule"]["description"]]
+
+
+def test_emitted_alert_ingests_once_then_dedupes():
+    from sqlmodel import select
+    from app.db.session import get_session
+    from app.db.models import Alert
+    from detectors.authlog.emit import ingest_with_retry
+    alerts = [window_to_alert(_scored())]
+    assert ingest_with_retry(alerts) == 1
+    assert ingest_with_retry(alerts) == 0            # same id -> deduped (idempotent)
+    with get_session() as s:
+        row = s.exec(select(Alert).where(Alert.rule_id == D1_RULE_ID)).one()
+        assert row.agent_name == "web-9" and row.rule_description.startswith("ML:")
+
+
+def test_runner_end_to_end_flags_a_burst_and_ingests_it():
+    from sqlmodel import select
+    from app.db.session import get_session
+    from app.db.models import Alert
+
+    base = [f"Sep 10 {h:02d}:{m:02d}:00 h sshd[1]: Failed password for invalid user x "
+            f"from 1.2.3.{(h * 4 + i) % 250} port 22 ssh2"
+            for h in range(20) for i, m in enumerate((0, 15, 30, 45))]   # calm, ~1 / 15 min
+    burst = [f"Sep 10 20:{i // 60:02d}:{i % 60:02d} h sshd[1]: Failed password for invalid user y "
+             f"from 9.9.9.{i % 250} port 22 ssh2"
+             for i in range(120)]                                        # 120 in the 20:00 window
+    alerts = run_detector(base + burst, baseline_frac=0.8)
+    assert alerts and all(a["rule"]["id"] == D1_RULE_ID for a in alerts)
+    with get_session() as s:
+        assert s.exec(select(Alert).where(Alert.rule_id == D1_RULE_ID)).first() is not None
