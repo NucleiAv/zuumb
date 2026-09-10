@@ -182,6 +182,8 @@
     var S = window.STATS || {};
     var p = palette();
     var sevKeys = ['pending', 'low', 'medium', 'high'];
+    // benign -> low/green, suspicious -> medium/amber, malicious -> high/red (used by c-verdicts)
+    var sev3 = [p.sev.low, p.sev.medium, p.sev.high];
     instances.push(doughnut('c-severity', sevKeys,
       sevKeys.map(function (k) { return (S.severity || {})[k] || 0; }),
       sevKeys.map(function (k) { return p.sev[k]; }), p, 'severity'));
@@ -219,8 +221,9 @@
     instances.push(sevBar('c-host', S.by_host, p, 'host'));
     instances.push(sevBar('c-rule', S.by_rule, p, 'rule'));
     instances.push(sevBar('c-mitre', S.by_mitre, p, 'mitre'));  // -> incidents with a verdict tagged this technique
+    var vd = S.verdict_dist || {};
     instances.push(doughnut('c-verdicts', ['benign', 'suspicious', 'malicious'],
-      [S.verdict_dist.benign, S.verdict_dist.suspicious, S.verdict_dist.malicious], sev3, p, 'verdict'));
+      [vd.benign || 0, vd.suspicious || 0, vd.malicious || 0], sev3, p, 'verdict'));
   }
 
   // --- panel "⋯" -> download that panel's data as CSV -------------------------
