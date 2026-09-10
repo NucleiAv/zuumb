@@ -15,12 +15,26 @@ into an alert; this module only produces the score.
 """
 from __future__ import annotations
 
+import warnings
+from contextlib import contextmanager
 from dataclasses import dataclass
 
 import numpy as np
 from pyod.models.ecod import ECOD
 
 from detectors.authlog.features import FeatureRow, template_vocabulary
+
+
+@contextmanager
+def _quiet():
+    """ECOD's per-feature skewness calc warns about "catastrophic cancellation"
+    on a quiet host whose windows are nearly identical. It falls back to
+    nan_to_num internally and the z-test here doesn't lean on the raw magnitude,
+    so the warning is noise for our use."""
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)
+        yield
+
 
 DEFAULT_Z = 4.0  # a window is flagged when its score is this many std-devs
                 # above the mean baseline score
@@ -73,7 +87,8 @@ class AuthLogAnomalyModel:
         self._keep = X.std(axis=0) > 0
         if not self._keep.any():
             self._keep = np.ones(X.shape[1], dtype=bool)
-        self._clf.fit(X[:, self._keep])
+        with _quiet():
+            self._clf.fit(X[:, self._keep])
         train = self._clf.decision_scores_
         self._base_mean = float(np.mean(train))
         self._base_std = float(np.std(train)) or 1e-9
@@ -84,7 +99,8 @@ class AuthLogAnomalyModel:
         if not self._fitted:
             raise RuntimeError("call fit() before score()")
         rows = list(rows)
-        raw = self._clf.decision_function(_vectorize(rows, self.vocab)[:, self._keep])
+        with _quiet():
+            raw = self._clf.decision_function(_vectorize(rows, self.vocab)[:, self._keep])
         out = []
         for r, s in zip(rows, raw):
             z = (float(s) - self._base_mean) / self._base_std
