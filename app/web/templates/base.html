@@ -254,6 +254,11 @@
   .sev-low, .v-benign { color: var(--sev-low); }
   .sev-medium, .v-suspicious { color: var(--sev-medium); font-weight: 600; }
   .sev-high, .v-malicious { color: var(--sev-high); font-weight: 700; }
+  .conf { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em;
+          padding: .05rem .35rem; border-radius: 3px; border: 1px solid currentColor; }
+  .conf-high { color: var(--sev-low); }
+  .conf-medium { color: var(--sev-medium); }
+  .conf-low { color: var(--sev-high); }
 </style>
 {% block head %}{% endblock %}
 </head>

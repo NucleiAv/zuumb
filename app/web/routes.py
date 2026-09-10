@@ -9,7 +9,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlmodel import select
 
-from app.attack_chain.stitcher import TACTIC_ORDER, _incident_tactics, stage_label
+from app.attack_chain.stitcher import TACTIC_ORDER, _incident_tactics
 from app.correlation.engine import _analyst_verdicts, entities, incident_severity
 from app.config import settings
 from app.db.models import (
@@ -215,7 +215,9 @@ def chain_detail(request: Request, chain_id: int):
             stages.append({
                 "order": link.stage_order,
                 "incident": inc,
-                "tactic": stage_label(inc_alerts, technique),
+                # item 3: stored at stitch time, with where the label came from
+                "tactic": link.tactic or "Unknown",
+                "tactic_source": link.tactic_source or "unknown",
                 "alert_count": len(inc_alerts),
                 "shared_with_earlier": shared,
             })
@@ -226,9 +228,13 @@ def chain_detail(request: Request, chain_id: int):
     })
 
 
+_CHAIN_STATUSES = ("open", "investigating", "contained", "closed",
+                   "confirmed-narrative", "false-chain")  # last two: analyst causation call (item 5)
+
+
 @router.post("/chains/{chain_id}/status")
 def chain_status(chain_id: int, status: str = Form(...), csrf_ok: None = Depends(require_csrf)):
-    if status not in ("open", "investigating", "contained", "closed"):
+    if status not in _CHAIN_STATUSES:
         raise HTTPException(status_code=400, detail="invalid chain status")
     with get_session() as s:
         chain = s.get(AttackChain, chain_id)

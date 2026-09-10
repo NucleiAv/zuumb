@@ -38,6 +38,12 @@ class Settings(BaseSettings):
     # not a real link — dropped so it can't stitch unrelated incidents into one chain.
     # Lower it if real traffic is dense enough that legit chains stay small.
     chain_max_entity_spread: int = 4
+    # chain stitcher time-proximity (item 1). Two incidents on a shared entity link
+    # into one chain only if their alert spans are within chain_max_link_hours of
+    # each other; a gap beyond chain_strong_link_hours still links but costs
+    # confidence. Beyond chain_max_link_hours they do not link at all.
+    chain_strong_link_hours: int = 24
+    chain_max_link_hours: int = 72
 
     # Active response (Phase 14). SEPARATE least-privilege Manager API user — never
     # the ingestion credential. Its RBAC policy should allow only active-response:command.

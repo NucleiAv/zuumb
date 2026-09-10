@@ -1,5 +1,5 @@
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from sqlmodel import delete, select
 
@@ -31,8 +31,21 @@ def test_tactic_rank_follows_kill_chain_order():
 def test_group_by_shared_entity_is_transitive():
     incs = [Incident(id=1, title="a"), Incident(id=2, title="b"), Incident(id=3, title="c")]
     ent = {1: {"host:h1"}, 2: {"host:h1", "ip:9.9.9.9"}, 3: {"user:bob"}}
-    sizes = sorted(len(g) for g in _group_by_shared_entity(incs, ent))
+    t = datetime(2026, 1, 1, 12, 0)
+    spans = {1: (t, t), 2: (t, t), 3: (t, t)}  # all simultaneous -> time never blocks
+    sizes = sorted(len(g) for g in _group_by_shared_entity(incs, ent, spans, 72))
     assert sizes == [1, 2]  # 1<->2 via host:h1; 3 alone
+
+
+def test_group_by_shared_entity_wont_link_incidents_beyond_the_time_window():
+    incs = [Incident(id=1, title="a"), Incident(id=2, title="b")]
+    ent = {1: {"host:h1"}, 2: {"host:h1"}}  # same host
+    monday = datetime(2026, 1, 5, 9, 0)
+    thursday = datetime(2026, 1, 8, 9, 0)  # ~72h later, exactly at the edge
+    spans = {1: (monday, monday), 2: (thursday, thursday)}
+    # inside the window they link, past it they don't
+    assert sorted(len(g) for g in _group_by_shared_entity(incs, ent, spans, 72)) == [2]
+    assert sorted(len(g) for g in _group_by_shared_entity(incs, ent, spans, 48)) == [1, 1]
 
 
 def _incident_rule_ids():
@@ -115,8 +128,11 @@ def test_chain_title_reflects_first_and_last_stage_tactic():
     """Bug fix: title = tactic of stage 0 -> tactic of the last stage (matches the table),
     not a canonical-latest lookup."""
     _ingest_triage_correlate()
-    from app.attack_chain.stitcher import stage_label
+    from app.attack_chain.stitcher import stage_label_with_source
     from app.db.models import Verdict
+
+    def stage_label(alerts, tech):
+        return stage_label_with_source(alerts, tech)[0]
 
     rules = _incident_rule_ids()
     chains = stitch()
@@ -180,3 +196,53 @@ def test_lone_incident_makes_no_chain():
         s.add(IncidentAlert(incident_id=inc.id, alert_id=a.id))
         s.commit()
     assert stitch() == []
+
+
+# --- chain hardening: the Monday-recon / Thursday-exfil coincidence -------------
+
+def _seed_two(host_a, ip_a, tac_a, ts_a, host_b, ip_b, tac_b, ts_b):
+    """Two high-severity attack incidents with explicit hosts/IPs, tactics, times."""
+    import json as _json
+    from app.db.models import Verdict
+    raw = lambda tac: _json.dumps({"rule": {"groups": ["attack"], "mitre": {"tactic": [tac]}}})
+    with get_session() as s:
+        for tag, host, ip, tac, ts in [("A", host_a, ip_a, tac_a, ts_a),
+                                       ("B", host_b, ip_b, tac_b, ts_b)]:
+            al = Alert(wazuh_alert_id=tag, timestamp=ts, rule_id="1", rule_description="d",
+                       agent_name=host, src_ip=ip, raw_json=raw(tac))
+            s.add(al); s.commit(); s.refresh(al)
+            s.add(Verdict(alert_id=al.id, verdict="malicious", confidence=0.9,
+                          reasoning_text="x", model_version="t"))
+            inc = Incident(title=tag, severity="high")
+            s.add(inc); s.commit(); s.refresh(inc)
+            s.add(IncidentAlert(incident_id=inc.id, alert_id=al.id)); s.commit()
+
+
+_MON = datetime(2026, 1, 5, 9, 0)
+
+
+def test_far_apart_coincidence_on_one_host_does_not_form_a_chain():
+    # Monday recon scan + Thursday exfil on web-01, ~72h+ apart, nothing else shared
+    _seed_two("web-01", "203.0.113.9", "Reconnaissance", _MON,
+              "web-01", "198.51.100.4", "Exfiltration", _MON + timedelta(hours=80))
+    assert stitch() == []  # beyond chain_max_link_hours -> not linked at all
+
+
+def test_mid_range_coincidence_on_one_host_is_low_confidence_not_a_strong_chain():
+    # same coincidence but ~48h apart: links, but every warning fires
+    _seed_two("web-01", "203.0.113.9", "Reconnaissance", _MON,
+              "web-01", "198.51.100.4", "Exfiltration", _MON + timedelta(hours=48))
+    chains = stitch()
+    assert len(chains) == 1
+    c = chains[0]
+    assert c.confidence == "low"
+    assert "single shared host" in c.confidence_reasons or "single shared entity" in c.confidence_reasons
+    assert "strong-link window" in c.confidence_reasons
+
+
+def test_tight_multi_entity_chain_is_not_low_confidence():
+    # same host AND same source IP, ~2h apart, native tactics -> a real-looking chain
+    _seed_two("web-01", "203.0.113.9", "Reconnaissance", _MON,
+              "web-01", "203.0.113.9", "Execution", _MON + timedelta(hours=2))
+    chains = stitch()
+    assert len(chains) == 1 and chains[0].confidence in ("high", "medium")

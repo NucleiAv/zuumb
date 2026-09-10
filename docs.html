@@ -593,11 +593,25 @@ curl -sk -H "Authorization: Bearer $TOKEN" "https://localhost:55000/agents/summa
     heatmap bucket in the viewer's own timezone.</p>
 
     <h2 id="attack-chains">Attack chains and tuning</h2>
-    <p>The stitcher is data-source agnostic, so real traffic needs validation more than new code.
-    Let live data accumulate for a few days, then check chain quality.</p>
+    <div class="note">
+      <span class="tag">What a chain is, and isn't</span>
+      An attack chain is a <strong>grouping hypothesis</strong>, not a proven timeline or attacker
+      attribution. zuumb takes medium/high incidents that share a host, IP, or user within a time
+      window, orders them by MITRE tactic, and calls that a chain. It does not check that one stage
+      caused the next. A Monday recon scan and an unrelated Thursday file transfer on the same host
+      are not one attack, even though the grouping would line them up in sequence. Treat a chain as
+      a lead to review, not a conclusion.
+    </div>
+    <p>Every chain carries a <strong>confidence</strong> score (<code>high</code> / <code>medium</code> /
+    <code>low</code>), computed when the chain is built and shown on the chains list and detail pages.
+    It is downgraded when the only link is a single shared host (jump-box shape), when stages are
+    linked only transitively, when there is a large time gap between linked stages, when tactic labels
+    are guessed from technique ids rather than taken from Wazuh's own mapping, or when the whole chain
+    rests on one shared entity. A <code>low</code>-confidence chain shows an unmissable warning on its
+    detail page. An analyst can also mark a chain <code>confirmed-narrative</code> or
+    <code>false-chain</code> — that human causation call is kept separate from the system's score.</p>
+    <p>The CLI diagnostic prints the same signals for every stored chain:</p>
     <pre><code>python -m scripts.chain_quality</code></pre>
-    <p>It prints, per chain, the entities that join each pair of adjacent stages, and flags two
-    false-chain shapes.</p>
     <table class="t">
       <thead><tr><th>Flag</th><th>Meaning</th></tr></thead>
       <tbody>
@@ -607,8 +621,9 @@ curl -sk -H "Authorization: Bearer $TOKEN" "https://localhost:55000/agents/summa
         chain was stitched only transitively and is worth a second look.</td></tr>
       </tbody>
     </table>
-    <p>Tune with <code>CORRELATION_WINDOW_MINUTES</code> and <code>CHAIN_MAX_ENTITY_SPREAD</code>
-    from the <a href="#configuration">configuration</a> table.</p>
+    <p>Tune with <code>CORRELATION_WINDOW_MINUTES</code>, <code>CHAIN_MAX_ENTITY_SPREAD</code>,
+    <code>CHAIN_STRONG_LINK_HOURS</code>, and <code>CHAIN_MAX_LINK_HOURS</code> from the
+    <a href="#configuration">configuration</a> table.</p>
 
     <h2 id="active-response">Automated mitigation</h2>
     <p>zuumb groups alerts into incidents and, for each incident, suggests response tasks like

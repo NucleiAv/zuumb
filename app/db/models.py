@@ -49,14 +49,22 @@ class IncidentAlert(SQLModel, table=True):
 class AttackChain(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     title: str
-    status: str = "open"  # open | investigating | contained | closed
+    # open | investigating | contained | closed  -> workflow state
+    # confirmed-narrative | false-chain           -> analyst's causation call (item 5)
+    status: str = "open"
     created_at: datetime = Field(default_factory=_now)
+    # System-computed at stitch time (item 2). Nullable so the mini-migration can
+    # add them to an existing DB; stitch() rewrites every chain each cycle anyway.
+    confidence: str | None = "medium"          # high | medium | low
+    confidence_reasons: str | None = ""        # "; "-joined caveats, empty when high
 
 
 class AttackChainIncident(SQLModel, table=True):
     attack_chain_id: int = Field(foreign_key="attackchain.id", primary_key=True)
     incident_id: int = Field(foreign_key="incident.id", primary_key=True)
     stage_order: int  # 0-based position in MITRE tactic kill-chain order
+    tactic: str | None = "Unknown"             # this stage's representative tactic
+    tactic_source: str | None = "unknown"      # native (Wazuh rule.mitre.tactic) | fallback (guessed) | unknown
 
 
 class Task(SQLModel, table=True):
