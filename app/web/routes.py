@@ -26,6 +26,7 @@ from app.db.models import (
 from app.db.session import get_session
 from app.feedback.logger import record_override
 from app.redact import redact
+from app.triage.second_opinion import escalates as so_escalates
 from app.web.auth import auth_enabled, csrf_field, read_session, require_csrf
 from app.response.approve import ConfirmRequired, RateLimited, approve_task
 from app.response.playbooks import propose_for_incident
@@ -37,6 +38,7 @@ templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 templates.env.filters["isoz"] = lambda dt: dt.strftime("%Y-%m-%dT%H:%M:%SZ")
 templates.env.globals["csrf_field"] = csrf_field
 templates.env.globals["show_account_menu"] = lambda req: auth_enabled() and read_session(req) is not None
+templates.env.globals["so_escalates"] = so_escalates
 # cache-bust /static/charts.js on its mtime, so a restart always invalidates a stale bundle
 templates.env.globals["charts_v"] = int(
     (Path(__file__).parent / "static" / "charts.js").stat().st_mtime

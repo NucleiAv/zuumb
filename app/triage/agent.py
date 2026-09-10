@@ -5,6 +5,7 @@ The LLM call is injectable (`call=`) so tests never hit the API.
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 from typing import Callable
 
@@ -94,7 +95,8 @@ def triage_alert(
     session = session or get_session()
     try:
         system = PROMPT_PATH.read_text(encoding="utf-8") + few_shot_block(session)  # last-K analyst corrections
-        out = call(system, _alert_brief(alert))
+        brief = _alert_brief(alert)
+        out = call(system, brief)
         verdict = Verdict(
             alert_id=alert.id,
             verdict=out["verdict"],
@@ -103,6 +105,11 @@ def triage_alert(
             mitre_technique=out.get("mitre_technique"),
             model_version=settings.anthropic_model,
         )
+        try:  # D3: advisory cross-check; must never break the primary verdict
+            from app.triage.second_opinion import second_opinion
+            verdict.second_opinion, verdict.second_opinion_confidence = second_opinion(brief)
+        except Exception as e:  # noqa: BLE001
+            logging.getLogger("uvicorn.error").warning("second opinion skipped: %s", e)
         session.add(verdict)
         session.commit()
         session.refresh(verdict)

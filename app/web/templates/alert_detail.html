@@ -46,8 +46,26 @@
       <tr><th class="fieldname">confidence</th><td>{{ '%.2f'|format(verdict.confidence) }}</td></tr>
       <tr><th class="fieldname">MITRE technique</th><td>{{ verdict.mitre_technique or '—' }}</td></tr>
       <tr><th class="fieldname">reasoning</th><td>{{ verdict.reasoning_text }}</td></tr>
+      {% if verdict.second_opinion %}
+      <tr>
+        <th class="fieldname">second opinion</th>
+        <td>
+          <span class="v-{{ verdict.second_opinion }}">{{ verdict.second_opinion }}</span>
+          <span class="muted">({{ '%.2f'|format(verdict.second_opinion_confidence or 0) }})</span>
+          {% if so_escalates(verdict.verdict, verdict.second_opinion) %}
+          <span class="sev-medium" title="the local classifier rates this stricter than the primary verdict">
+            &#8593; stricter than the primary verdict &mdash; worth a look</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endif %}
     </tbody>
   </table>
+  {% if verdict.second_opinion %}
+  <p class="subtle">The <b>second opinion</b> is a lightweight local TF-IDF classifier trained on the
+    34-alert eval set — advisory only, a directional cross-check on the primary verdict, and it
+    drives nothing.</p>
+  {% endif %}
   {% else %}
   <p class="muted">This alert has not been triaged.</p>
   {% endif %}
