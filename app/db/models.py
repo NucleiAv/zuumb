@@ -25,12 +25,16 @@ class Alert(SQLModel, table=True):
 class Verdict(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     alert_id: int = Field(foreign_key="alert.id", index=True)
-    verdict: str  # benign | suspicious | malicious
+    verdict: str  # benign | suspicious | malicious  <- the PRIMARY verdict (LLM)
     confidence: float  # 0..1
     reasoning_text: str
     mitre_technique: str | None = None
     model_version: str
     created_at: datetime = Field(default_factory=_now)
+    # D3: a cheap local TF-IDF second opinion, advisory only. Nullable so the
+    # mini-migration adds it; drives nothing (severity/correlation ignore it).
+    second_opinion: str | None = None              # benign | suspicious | malicious
+    second_opinion_confidence: float | None = None
 
 
 class Incident(SQLModel, table=True):

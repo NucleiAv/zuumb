@@ -25,7 +25,7 @@
       <td>{{ a.src_ip or '-' }}</td>
       <td>{{ a.user or '-' }}</td>
       {% if v %}
-      <td class="v-{{ v.verdict }}">{{ v.verdict }}</td>
+      <td class="v-{{ v.verdict }}">{{ v.verdict }}{% if so_escalates(v.verdict, v.second_opinion) %}<span class="sev-medium" title="local second opinion is stricter: {{ v.second_opinion }} ({{ '%.2f'|format(v.second_opinion_confidence or 0) }}) — advisory, worth a look">&nbsp;&#8593;</span>{% endif %}</td>
       <td>{{ '%.2f'|format(v.confidence) }}</td>
       <td>{{ v.mitre_technique or '-' }}</td>
       <td class="muted">{{ v.reasoning_text }}</td>
