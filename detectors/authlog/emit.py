@@ -10,14 +10,13 @@ the same window produces the same id and `ingest_alerts`' dedupe absorbs it.
 from __future__ import annotations
 
 import hashlib
-import time
 from datetime import timedelta
 
-from sqlalchemy.exc import OperationalError
-
-from app.ingestion.wazuh_client import ingest_alerts
 from detectors.authlog.features import DEFAULT_WINDOW_SECONDS
 from detectors.authlog.model import DEFAULT_Z, ScoredWindow
+from detectors.ingest import ingest_with_retry  # re-exported; shared by every detector
+
+__all__ = ["window_to_alert", "flagged_alerts", "ingest_with_retry", "D1_RULE_ID"]
 
 D1_RULE_ID = "900001"  # reserved band 900001-900999 (plan Section 0.5 point 2)
 D1_RULE_GROUPS = ["ml", "ids", "authentication_anomaly"]
@@ -73,16 +72,3 @@ def flagged_alerts(scored, *, window_seconds: int = DEFAULT_WINDOW_SECONDS,
                    z_threshold: float = DEFAULT_Z) -> list[dict]:
     return [window_to_alert(sw, window_seconds=window_seconds, z_threshold=z_threshold)
             for sw in scored if sw.is_anomaly]
-
-
-def ingest_with_retry(alerts: list[dict], *, attempts: int = 5, backoff: float = 0.5) -> int:
-    """Hand alerts to zuumb via the normal ingest path, retrying past the SQLite
-    single-writer lock (plan Section 0.5 point 3)."""
-    for i in range(attempts):
-        try:
-            return ingest_alerts(alerts)
-        except OperationalError as e:
-            if "database is locked" not in str(e).lower() or i == attempts - 1:
-                raise
-            time.sleep(backoff * (i + 1))
-    return 0  # unreachable
