@@ -39,7 +39,6 @@ class Incident(SQLModel, table=True):
     status: str = "open"  # open | investigating | closed
     severity: str = "low"  # low | medium | high
     created_at: datetime = Field(default_factory=_now)
-    closed_at: datetime | None = None
 
 
 class IncidentAlert(SQLModel, table=True):
@@ -67,7 +66,6 @@ class Task(SQLModel, table=True):
     title: str
     status: str = "todo"  # todo | in_progress | done | failed (live dispatch rejected)
     priority: str = "medium"  # low | medium | high
-    assignee: str | None = None
     # Phase 14: set only on tasks that map to an allowlisted active-response action.
     action: str | None = None          # block-ip | disable-user  (see app/response/active_response.py)
     action_target: str | None = None   # the IP / username the action needs
@@ -108,7 +106,6 @@ class DeadLetter(SQLModel, table=True):
     error: str = ""
     attempts: int = 1
     created_at: datetime = Field(default_factory=_now)
-    updated_at: datetime = Field(default_factory=_now)
 
 
 class Credential(SQLModel, table=True):

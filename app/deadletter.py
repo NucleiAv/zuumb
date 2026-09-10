@@ -6,8 +6,6 @@ one poison alert or bad model response can't block the rest of the pipeline.
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
-
 from sqlmodel import Session, func, select
 
 from app.db.models import DeadLetter
@@ -24,7 +22,6 @@ def record(session: Session, source: str, key, error) -> DeadLetter:
     else:
         row.attempts += 1
         row.error = str(error)[:_ERR_MAX]
-        row.updated_at = datetime.now(timezone.utc)
     session.add(row)
     session.commit()
     return row

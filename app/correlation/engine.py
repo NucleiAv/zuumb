@@ -6,7 +6,7 @@ thin DB wrapper that persists the result.
 from __future__ import annotations
 
 from collections import Counter, defaultdict
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 
 from sqlmodel import Session, delete, select
 
@@ -14,7 +14,6 @@ from app.config import settings
 from app.db.models import Alert, AnalystFeedback, Incident, IncidentAlert, Task, Verdict
 from app.db.session import get_session, init_db
 
-_SEVERITY = {"benign": "low", "suspicious": "medium", "malicious": "high"}
 _RANK = {"benign": 0, "suspicious": 1, "malicious": 2}
 
 
@@ -173,7 +172,7 @@ def correlate(session: Session | None = None, window_minutes: int | None = None)
             if absorber and absorber != inc.id:
                 for t in session.exec(select(Task).where(Task.incident_id == inc.id)).all():
                     t.incident_id = absorber
-            inc.status, inc.closed_at = "merged", datetime.now(timezone.utc)
+            inc.status = "merged"
             session.exec(delete(IncidentAlert).where(IncidentAlert.incident_id == inc.id))
             session.commit()
 
