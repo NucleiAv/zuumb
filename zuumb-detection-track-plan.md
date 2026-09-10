@@ -236,6 +236,17 @@ Checkpoint: `/ponytail-review` after each numbered step, `/ponytail-audit` once 
 
 Checkpoint: `/ponytail-review`, `/ponytail-audit` once two independent detector sources both flow cleanly through the unmodified core.
 
+**Continuous-operation status (added after D1/D2 shipped):** D1 runs continuously
+as the `detector-authlog` docker-compose service — it polls the Wazuh alerts
+index for `location: /var/log/auth.log` lines every 10 min (a `DetectorCursor`
+row tracks progress + last-run time; the incidents page shows staleness). **D2
+stays a manual CLI tool.** It requires a real network-flow feed — a Zeek/Suricata
+`conn.log` or `nfstream` on a live segment — and this Wazuh-only lab produces
+none (Wazuh captures no flow data natively, and the lab simulates hosts with a
+log-line generator, not real connections). Do **not** stand up a synthetic flow
+generator just to give D2 a schedule; that is the "always runs on empty input"
+anti-pattern. D2 becomes continuous only once a genuine flow source exists.
+
 ### Phase D3 — LLM-assisted classification alongside the anomaly detectors
 
 *Persona: Backend Architect, Security Engineer to review data handling.*

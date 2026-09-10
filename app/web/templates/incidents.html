@@ -15,6 +15,11 @@
   <b>{{ stats.quarantined }}</b> record{{ '' if stats.quarantined == 1 else 's' }} failed ingest or triage
   and {{ 'was' if stats.quarantined == 1 else 'were' }} quarantined — see the server log.</p>
 {% endif %}
+{% if stats.detectors %}
+<p class="subtle">continuous detectors:
+  {% for d in stats.detectors %}<span class="{{ 'sev-high' if d.stale else 'muted' }}">{{ d.name }} ran
+  {{ d.minutes_ago }}m ago{{ ' — STALE, likely not running' if d.stale }} ({{ d.alerts_emitted }} alert{{ '' if d.alerts_emitted == 1 else 's' }})</span>{{ ' · ' if not loop.last }}{% endfor %}</p>
+{% endif %}
 <p class="subtle">An <b>alert</b> is one Wazuh detection. An <b>incident</b> is alerts sharing a host, IP,
   or user within {{ stats.window_minutes }} min — so a burst on one host becomes a single incident.</p>
 

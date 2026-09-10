@@ -129,3 +129,13 @@ class Credential(SQLModel, table=True):
     pw_hash: str  # pbkdf2_hmac(sha256) hex
     pw_salt: str  # hex
     updated_at: datetime = Field(default_factory=_now)
+
+
+class DetectorCursor(SQLModel, table=True):
+    """Per-detector progress + liveness, for detectors that run continuously
+    (D1's scheduled auth-log poll). One row per detector."""
+    detector: str = Field(primary_key=True)          # "authlog"
+    last_ts: datetime | None = None                  # newest window_start already scored
+    last_run_at: datetime = Field(default_factory=_now)
+    interval_seconds: int = 600                      # how often it's scheduled; drives stale detection
+    alerts_emitted: int = 0                          # running total this cursor has ingested

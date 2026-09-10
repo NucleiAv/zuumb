@@ -316,6 +316,29 @@ wsl bash scripts/lab-up.sh     # Wazuh stack -> wait for indexer -> agents -> pr
 .venv/Scripts/python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
+## Detection engines
+
+zuumb reads Wazuh's alerts and adds two of its own detectors that emit alerts in
+the same shape (reserved `rule.id` bands: **900001–900999** D1, **901001–901999**
+D2), through the exact ingest path Wazuh alerts use.
+
+| Detector | Data | Method | How it runs |
+|---|---|---|---|
+| **D1 — auth-log anomaly** | sshd / `/var/log/auth.log` lines, pulled from the Wazuh alerts index | ECOD outlier score on per-host / per-5-min template-count features | **continuous** — the `detector-authlog` container polls every 10 min; `docker compose up` starts it |
+| **D2 — network beacon** | connection records (Zeek `conn.log`, or a `ts,src,dst,port` CSV) | regularity scan — a source calling one destination on a near-fixed interval | **manual CLI only** — `python -m detectors.netflow.run --conn <file>` |
+
+**D2 is not scheduled.** It needs a real network-flow feed — a Zeek/Suricata
+`conn.log` or `nfstream` on a live segment — and this Wazuh-only stack doesn't
+produce one (Wazuh captures no flow data natively). Point D2 at a real
+`conn.log` by hand until such a feed exists; scheduling it against nothing would
+just be a job that always runs on empty input.
+
+The incidents page shows a **`continuous detectors:`** line — how long ago each
+scheduled detector last ran, red if stale (no run in 3× its interval) — so a
+silently-dead job is visible rather than assumed-working.
+
+D1 also runs ad-hoc against a file: `python -m detectors.authlog.run --log /var/log/auth.log`.
+
 ## Attack chains — what they are and aren't
 
 An attack chain is a **grouping hypothesis**, not a proven forensic timeline or

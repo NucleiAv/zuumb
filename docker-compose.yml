@@ -25,6 +25,26 @@ services:
       - "host.docker.internal:host-gateway"
     restart: unless-stopped
 
+  # D1 auth-log anomaly detector — polls the Wazuh alerts index every 10 min,
+  # scores per-host auth-log windows, and ingests any anomaly as a rule.id 900001
+  # alert through the same path Wazuh alerts use. Its own process, sharing only
+  # the SQLite volume — statistical scoring must never block the dashboard.
+  # (The D2 network-beacon detector stays a CLI tool: it needs a real flow feed
+  # — Zeek/Suricata conn.log or nfstream — which this stack does not provide.)
+  detector-authlog:
+    image: ghcr.io/nucleiav/zuumb:latest
+    env_file: .env
+    command: ["python", "-m", "detectors.authlog.run", "--live", "--interval", "600"]
+    volumes:
+      - zuumb-data:/data
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      - zuumb
+    healthcheck:
+      disable: true
+    restart: unless-stopped
+
   postgres:
     image: postgres:16-alpine
     profiles: ["pg"]
