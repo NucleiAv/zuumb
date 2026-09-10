@@ -21,6 +21,7 @@ WORKDIR /app
 
 COPY --from=build /venv /venv
 COPY app/ app/
+COPY detectors/ detectors/
 COPY prompts/ prompts/
 COPY scripts/ scripts/
 COPY eval/ eval/

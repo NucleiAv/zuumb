@@ -20,5 +20,20 @@ services:
       - "host.docker.internal:host-gateway"
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
 
+  # D1 auth-log anomaly detector, live. See docker-compose.yml for the rationale.
+  detector-authlog:
+    build: .
+    env_file: .env
+    command: ["python", "-m", "detectors.authlog.run", "--live", "--interval", "600"]
+    volumes:
+      - zuumb-data:/data
+      - ./app:/app/app
+      - ./detectors:/app/detectors
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      - zuumb
+    restart: unless-stopped
+
 volumes:
   zuumb-data:

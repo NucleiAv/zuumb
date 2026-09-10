@@ -5,14 +5,14 @@ client-side in the viewer's local zone from the raw `events` feed, so this modul
 never buckets or formats by hour/weekday.
 """
 from collections import Counter
-from datetime import timezone
+from datetime import datetime, timezone
 
 from sqlmodel import Session, func, select
 
 from app import deadletter
 from app.config import settings
 from app.correlation.engine import techniques_for
-from app.db.models import Alert, Incident, IncidentAlert, Verdict
+from app.db.models import Alert, DetectorCursor, Incident, IncidentAlert, Verdict
 
 TOP_N = 10
 _RANK = {"benign": 0, "suspicious": 1, "malicious": 2}
@@ -56,6 +56,7 @@ def compute_stats(session: Session, since=None, until=None) -> dict:
         },
         "window_minutes": settings.correlation_window_minutes,
         "quarantined": deadletter.count(session),  # records that failed ingest/triage (item 12)
+        "detectors": _detector_status(session),    # continuous detectors: last run + liveness
         "severity": {k: severity.get(k, 0) for k in ("pending", "low", "medium", "high")},
         "verdict_dist": {k: vdist.get(k, 0) for k in ("benign", "suspicious", "malicious")},
         "by_src_ip": _top(alerts, verdict, lambda a: a.src_ip),
@@ -73,6 +74,22 @@ def compute_stats(session: Session, since=None, until=None) -> dict:
             for a in alerts
         ),
     }
+
+
+def _detector_status(session: Session, now: datetime | None = None) -> list[dict]:
+    """Per continuous detector: minutes since its last scheduled run, and whether
+    that's gone stale (> 3x its interval) — a silently-dead job to flag."""
+    now = now or datetime.now(timezone.utc).replace(tzinfo=None)
+    out = []
+    for c in session.exec(select(DetectorCursor).order_by(DetectorCursor.detector)).all():
+        mins = (now - c.last_run_at).total_seconds() / 60
+        out.append({
+            "name": c.detector,
+            "minutes_ago": round(mins),
+            "stale": mins > 3 * c.interval_seconds / 60,
+            "alerts_emitted": c.alerts_emitted,
+        })
+    return out
 
 
 def _top(alerts, verdict, key) -> list[list]:
