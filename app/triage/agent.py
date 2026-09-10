@@ -5,7 +5,6 @@ The LLM call is injectable (`call=`) so tests never hit the API.
 from __future__ import annotations
 
 import json
-import re
 from pathlib import Path
 from typing import Callable
 
@@ -15,6 +14,7 @@ from app.config import settings
 from app.db.models import Alert, Verdict
 from app.db.session import get_session, init_db
 from app.feedback.logger import few_shot_block
+from app.redact import redact
 
 PROMPT_PATH = Path(__file__).parents[2] / "prompts" / "triage_v1.md"
 
@@ -39,22 +39,6 @@ _TOOL = {
 LlmCall = Callable[[str, str], dict]
 
 
-# High-precision secret patterns. Keeps false positives near zero so real triage
-# signal (payloads, hashes) still reaches the model — this is scoping, not scrubbing.
-_SECRET_PATTERNS = [
-    (re.compile(r"(?i)\b(pass(?:word|wd)?|secret|token|api[_-]?key|access[_-]?key|"
-                r"auth(?:orization)?)\b\s*[=:]\s*\S+"), r"\1=[redacted]"),
-    (re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._~+/-]+=*"), "Bearer [redacted]"),
-    (re.compile(r"\bAKIA[0-9A-Z]{16}\b"), "[redacted-aws-key]"),
-]
-
-
-def _redact(s: str) -> str:
-    for pat, repl in _SECRET_PATTERNS:
-        s = pat.sub(repl, s)
-    return s
-
-
 def _alert_brief(a: Alert) -> str:
     """The structured fields triage needs plus the human-readable log line, with
     obvious secrets masked. The full raw alert JSON is deliberately not sent to
@@ -74,7 +58,7 @@ def _alert_brief(a: Alert) -> str:
         "user": a.user,
         "log": raw.get("full_log") or raw.get("previous_output") or "",
     }
-    return "\n".join(f"{k}: {_redact(str(v))}" for k, v in fields.items() if v not in (None, ""))
+    return "\n".join(f"{k}: {redact(str(v))}" for k, v in fields.items() if v not in (None, ""))
 
 
 def _extract_verdict(content) -> dict:

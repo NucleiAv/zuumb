@@ -124,9 +124,10 @@ def propose_for_incident(incident_id: int, session: Session | None = None) -> li
         ).all()
         technique = {v.alert_id: v.mitre_technique for v in verdict_rows}
         verdict = {v.alert_id: v.verdict for v in verdict_rows}
-        existing = {
-            t.title for t in session.exec(select(Task).where(Task.incident_id == incident_id)).all()
-        }
+        # item 15: pull just the titles we compare against, not full Task rows
+        existing = set(session.exec(
+            select(Task.title).where(Task.incident_id == incident_id)
+        ).all())
         for task in suggest(incident_id, alerts, technique, verdict):
             if task.title not in existing:
                 session.add(task)

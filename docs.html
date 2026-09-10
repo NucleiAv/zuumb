@@ -694,6 +694,13 @@ curl -sk -H "Authorization: Bearer $TOKEN" "https://localhost:55000/agents/summa
     <h2 id="evaluation">Evaluation</h2>
     <p>Triage quality is measured against a hand-labelled set of 34 synthetic Wazuh alerts, 14
     benign, 10 suspicious, 10 malicious.</p>
+    <div class="note">
+      <span class="tag">Read these as directional</span>
+      This is an early internal eval, not a certified benchmark: the set is small and synthetic,
+      self-labelled by one annotator, and the model runs at its default non-zero temperature, so
+      a re-run lands near these figures but not digit-for-digit. They show the feedback loop
+      measurably helps, not a validated accuracy claim.
+    </div>
     <pre><code>python -m eval.run_eval [--few-shot]</code></pre>
     <table class="t">
       <thead><tr><th>Run</th><th>Accuracy</th><th>Malicious precision</th><th>Malicious recall</th><th>Malicious scored benign</th></tr></thead>

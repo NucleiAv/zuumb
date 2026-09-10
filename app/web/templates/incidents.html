@@ -10,6 +10,11 @@
 <p class="banner">Triaging new alerts — <b>{{ stats.triage.done }}</b> / {{ stats.triage.total }} done.
   Incidents and charts fill in as it catches up; this page auto-refreshes.</p>
 {% endif %}
+{% if stats.quarantined %}
+<p class="banner" style="border-color:var(--sev-medium);background:color-mix(in srgb, var(--sev-medium) 12%, transparent)">
+  <b>{{ stats.quarantined }}</b> record{{ '' if stats.quarantined == 1 else 's' }} failed ingest or triage
+  and {{ 'was' if stats.quarantined == 1 else 'were' }} quarantined — see the server log.</p>
+{% endif %}
 <p class="subtle">An <b>alert</b> is one Wazuh detection. An <b>incident</b> is alerts sharing a host, IP,
   or user within {{ stats.window_minutes }} min — so a burst on one host becomes a single incident.</p>
 

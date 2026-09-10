@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     wazuh_live_polling: bool = False  # start the background poller on app startup
     wazuh_poll_seconds: int = 60
     wazuh_poll_lookback_seconds: int = 120  # re-scan this far back each poll; dedup handles the overlap
+    triage_max_attempts: int = 3  # give up triaging (and quarantine) an alert after this many failures
 
     database_url: str = "sqlite:///./zuumb.db"
 

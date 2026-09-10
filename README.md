@@ -631,7 +631,7 @@ keeps `.env`, `*.db`, the landing page, and the planning docs out of the image.
 - **Phase 7** attack chain stitcher (`app/attack_chain/stitcher.py`) + `/chains` view — done.
 - **Phase 8** response layer (`app/response/playbooks.py`, propose-only, no execution) — done.
 - **Phase 9** feedback loop (`app/feedback/logger.py`, analyst override → few-shot in triage prompt) — done.
-- **Phase 10** eval harness (`eval/run_eval.py`, 34-alert labeled set) — done; baseline acc 0.82, +few-shot 0.94 ([eval/RESULTS.md](eval/RESULTS.md)).
+- **Phase 10** eval harness (`eval/run_eval.py`, 34-alert labeled set) — done; baseline acc ~0.82, +few-shot ~0.94 ([eval/RESULTS.md](eval/RESULTS.md)). Directional only: small self-labeled synthetic set, one annotator, default (non-zero) model temperature — not a certified benchmark.
 - **Phase 12** live Wazuh ingestion (`app/ingestion/wazuh_client.py` poller + `app/pipeline.py`) — done against a live 4.9.2 stack.
 - **Phase 13** attack chains at scale — `CHAIN_MAX_ENTITY_SPREAD` knob, `scripts/chain_quality.py` diagnostic, container agent lab (`docker/agent/`, `docker-compose.agents.yml`); validation ongoing against real traffic.
 - **Phase 14** human-approved active response — allowlisted Wazuh AR dispatch (`app/response/active_response.py`), approve→dispatch flow with dry-run default + audit log (`app/response/approve.py`, `/audit`); verified live against a throwaway agent (real iptables DROP rule).

@@ -25,6 +25,7 @@ from app.db.models import (
 )
 from app.db.session import get_session
 from app.feedback.logger import record_override
+from app.redact import redact
 from app.web.auth import auth_enabled, csrf_field, read_session, require_csrf
 from app.response.approve import ConfirmRequired, RateLimited, approve_task
 from app.response.playbooks import propose_for_incident
@@ -302,7 +303,7 @@ def audit_log(request: Request):
 
 
 def _flatten(obj, prefix: str = ""):
-    """Every leaf of a nested dict/list as (dotted-path, value). Deterministic, lossless."""
+    """Every leaf of a nested dict/list as (dotted-path, value)."""
     if isinstance(obj, dict):
         for k, v in obj.items():
             yield from _flatten(v, f"{prefix}{k}.")
@@ -313,10 +314,18 @@ def _flatten(obj, prefix: str = ""):
         yield prefix.rstrip("."), obj
 
 
+# The raw-alert branches an analyst actually needs for context. Everything else
+# (agent internals, cluster/manager metadata, verbose data.win.eventdata dumps,
+# index bookkeeping) is not rendered — item 14: filter, don't pass it all.
+_RAW_KEEP = ("rule.level", "rule.groups", "rule.mitre", "rule.info", "rule.cve",
+             "full_log", "previous_output", "location", "decoder.name",
+             "predecoder.program_name", "data.")
+
+
 @router.get("/alerts/{alert_id}", response_class=HTMLResponse)
 def alert_detail(request: Request, alert_id: int):
-    """Single-alert view. Renders ONLY stored data — the raw Wazuh alert and the
-    triage verdict/reasoning already in the DB. No LLM call is made here."""
+    """Single-alert view. Renders ONLY stored data — a curated slice of the raw
+    Wazuh alert and the triage verdict/reasoning already in the DB. No LLM call."""
     with get_session() as s:
         alert = s.get(Alert, alert_id)
         if alert is None:
@@ -336,12 +345,13 @@ def alert_detail(request: Request, alert_id: int):
         ("dst_ip", alert.dst_ip),
         ("user", alert.user),
     ]
+    raw_context = [(p, redact(str(v))) for p, v in sorted(_flatten(raw))
+                   if p.startswith(_RAW_KEEP)]
     return templates.TemplateResponse(request, "alert_detail.html", {
         "alert": alert,
         "incident_id": link.incident_id if link else None,
         "normalized": normalized,
-        "raw_fields": sorted(_flatten(raw)),
-        "raw_json_pretty": json.dumps(raw, indent=2, sort_keys=True),
+        "raw_context": raw_context,
         "verdict": verdict,
     })
 
