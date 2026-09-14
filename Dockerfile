@@ -16,7 +16,8 @@ FROM python:3.12-slim AS runtime
 ENV PATH=/venv/bin:$PATH \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    DATABASE_URL=sqlite:////data/zuumb.db
+    DATABASE_URL=sqlite:////data/zuumb.db \
+    MODEL_DIR=/data/models
 WORKDIR /app
 
 COPY --from=build /venv /venv

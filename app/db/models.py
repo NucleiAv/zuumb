@@ -139,3 +139,17 @@ class DetectorCursor(SQLModel, table=True):
     last_run_at: datetime = Field(default_factory=_now)
     interval_seconds: int = 600                      # how often it's scheduled; drives stale detection
     alerts_emitted: int = 0                          # running total this cursor has ingested
+
+
+class ModelVersion(SQLModel, table=True):
+    """D4: one row per retrain run of a locally-trained classifier (currently
+    just the second-opinion model, `kind="second_opinion"`). At most one row per
+    `kind` has `promoted=True` — that's the one `second_opinion.py` loads."""
+    id: int | None = Field(default=None, primary_key=True)
+    kind: str = Field(index=True, default="second_opinion")
+    trained_at: datetime = Field(default_factory=_now)
+    n_feedback_examples: int = 0       # AnalystFeedback rows folded into training
+    held_out_accuracy: float = 0.0     # on the stable eval-set split; the promotion gate
+    drift_score: float | None = None   # cosine sim, recent alerts vs training text; informational only
+    promoted: bool = False
+    path: str = ""                     # joblib file, relative to settings.model_dir

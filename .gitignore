@@ -17,6 +17,9 @@ venv/
 *.db
 *.orig
 
+# D4 retrain loop: promoted model files (regenerable, per-environment)
+data/models/
+
 # large pre-crop source art (regenerable from data/synthetic_alerts/gen_batch02.py-style tooling)
 assets/logo-originals/
 

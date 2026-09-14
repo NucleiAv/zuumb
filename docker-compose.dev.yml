@@ -33,6 +33,23 @@ services:
       - "host.docker.internal:host-gateway"
     depends_on:
       - zuumb
+    healthcheck:
+      disable: true
+    restart: unless-stopped
+
+  # D4 retrain loop, live. See docker-compose.yml for the rationale.
+  retrain-second-opinion:
+    build: .
+    env_file: .env
+    command: ["python", "-m", "app.triage.retrain", "--live"]
+    volumes:
+      - zuumb-data:/data
+      - ./app:/app/app
+      - ./eval:/app/eval
+    depends_on:
+      - zuumb
+    healthcheck:
+      disable: true
     restart: unless-stopped
 
 volumes:

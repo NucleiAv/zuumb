@@ -20,6 +20,13 @@
   {% for d in stats.detectors %}<span class="{{ 'sev-high' if d.stale else 'muted' }}">{{ d.name }} ran
   {{ d.minutes_ago }}m ago{{ ' — STALE, likely not running' if d.stale }} ({{ d.alerts_emitted }} alert{{ '' if d.alerts_emitted == 1 else 's' }})</span>{{ ' · ' if not loop.last }}{% endfor %}</p>
 {% endif %}
+{% if stats.second_opinion_model %}
+{% set som = stats.second_opinion_model %}
+<p class="subtle">second-opinion model: v{{ som.version }} &middot;
+  held-out accuracy {{ '%.2f'|format(som.held_out_accuracy) }} &middot;
+  {{ som.n_feedback_examples }} analyst correction{{ '' if som.n_feedback_examples == 1 else 's' }} folded in
+  {%- if som.drift_score is not none %} &middot; drift {{ '%.2f'|format(som.drift_score) }}{% endif %}</p>
+{% endif %}
 <p class="subtle">An <b>alert</b> is one Wazuh detection. An <b>incident</b> is alerts sharing a host, IP,
   or user within {{ stats.window_minutes }} min — so a burst on one host becomes a single incident.</p>
 

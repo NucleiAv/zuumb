@@ -13,6 +13,7 @@ from app import deadletter
 from app.config import settings
 from app.correlation.engine import techniques_for
 from app.db.models import Alert, DetectorCursor, Incident, IncidentAlert, Verdict
+from app.triage.second_opinion import get_promoted
 
 TOP_N = 10
 _RANK = {"benign": 0, "suspicious": 1, "malicious": 2}
@@ -57,6 +58,7 @@ def compute_stats(session: Session, since=None, until=None) -> dict:
         "window_minutes": settings.correlation_window_minutes,
         "quarantined": deadletter.count(session),  # records that failed ingest/triage (item 12)
         "detectors": _detector_status(session),    # continuous detectors: last run + liveness
+        "second_opinion_model": _second_opinion_status(session),  # D4: promoted model, if any
         "severity": {k: severity.get(k, 0) for k in ("pending", "low", "medium", "high")},
         "verdict_dist": {k: vdist.get(k, 0) for k in ("benign", "suspicious", "malicious")},
         "by_src_ip": _top(alerts, verdict, lambda a: a.src_ip),
@@ -90,6 +92,20 @@ def _detector_status(session: Session, now: datetime | None = None) -> list[dict
             "alerts_emitted": c.alerts_emitted,
         })
     return out
+
+
+def _second_opinion_status(session: Session) -> dict | None:
+    """The currently-promoted D4 second-opinion model, or None before the
+    retrain loop has ever run (second_opinion.py then just uses the D3 default)."""
+    row = get_promoted(session)
+    if row is None:
+        return None
+    return {
+        "version": row.id,
+        "held_out_accuracy": row.held_out_accuracy,
+        "n_feedback_examples": row.n_feedback_examples,
+        "drift_score": row.drift_score,
+    }
 
 
 def _top(alerts, verdict, key) -> list[list]:
