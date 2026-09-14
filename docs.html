@@ -280,6 +280,8 @@
       <div class="group-title">Features</div>
       <ul>
         <li><a href="#dashboard">The dashboard</a></li>
+        <li><a href="#detection-engines">Detection engines</a></li>
+        <li><a href="#second-opinion">Second opinion and retrain</a></li>
         <li><a href="#attack-chains">Attack chains and tuning</a></li>
         <li><a href="#active-response">Automated mitigation</a></li>
         <li><a href="#evaluation">Evaluation</a></li>
@@ -591,6 +593,61 @@ curl -sk -H "Authorization: Bearer $TOKEN" "https://localhost:55000/agents/summa
     </table>
     <p>Charts are exportable to CSV from the panel menu. The time series and the hour-by-weekday
     heatmap bucket in the viewer's own timezone.</p>
+
+    <h2 id="detection-engines">Detection engines</h2>
+    <p>Wazuh alerts are the main feed, but zuumb also runs a couple of its own detectors that look
+    for things a static rule set tends to miss. Both write alerts through the same path Wazuh
+    alerts use, so they show up in the dashboard, get triaged, and get correlated into incidents
+    just like anything else. You can tell them apart by rule id, and by the fact that their
+    reasoning talks about statistics rather than a signature match.</p>
+    <table class="t">
+      <thead><tr><th>Detector</th><th>Looks at</th><th>How it runs</th></tr></thead>
+      <tbody>
+        <tr><td>Auth-log anomaly</td><td>SSH login activity per host, in five-minute windows.
+        Mines the log lines into templates, scores each window with an outlier model, and flags
+        the ones that sit well outside how that host normally behaves. Rule id 900001.</td>
+        <td>Runs on its own as a scheduled container, polling the Wazuh alerts index every ten
+        minutes. Nothing to start by hand.</td></tr>
+        <tr><td>Network beacon</td><td>Connection records for one source talking to one
+        destination on one port, checking whether the gaps between connections are suspiciously
+        regular, the kind of steady drumbeat malware uses to phone home rather than the messier
+        rhythm of normal traffic. Rule id 901001.</td><td>A command you run against a connection
+        log when you have one. There is no live flow feed in this lab, so building a fake source
+        just to keep a container busy would defeat the point of the exercise.</td></tr>
+      </tbody>
+    </table>
+    <p>To try the beacon detector against a Zeek or Suricata style connection log</p>
+    <pre><code>python -m detectors.netflow.run --conn /path/to/conn.log</code></pre>
+    <p>The auth-log detector can also be pointed at a plain log file the same way, for a one-off
+    check instead of the continuous mode.</p>
+    <pre><code>python -m detectors.authlog.run --log /var/log/auth.log</code></pre>
+
+    <h2 id="second-opinion">Second opinion and retrain</h2>
+    <div class="note">
+      <span class="tag">Advisory only</span>
+      The second opinion never blocks or changes a verdict on its own. It runs a small local
+      classifier alongside the main triage call and only surfaces when it disagrees in the
+      stricter direction, malicious where triage said suspicious, or suspicious where triage said
+      benign. Treat it as a second set of eyes worth a glance, not a vote that outranks the model.
+    </div>
+    <p>The classifier is intentionally simple, word patterns weighted by a linear model, because
+    the amount of labeled data on hand is nowhere near enough to justify anything heavier. It
+    starts out trained on a small curated set of examples and gets better as analysts use the
+    dashboard. Every time someone records a verdict on an alert, that correction becomes a training
+    example the next retrain can learn from.</p>
+    <p>A retrain runs on its own schedule, weekly by default, as a separate container so the
+    training work never competes with the dashboard for CPU. Each run folds the accumulated
+    corrections into training, then checks the resulting model against a fixed held-out slice of
+    the original labeled set, the same slice every time, so scores are comparable across runs. If
+    the new version scores at least as well as the one currently live, it takes over. If it
+    doesn't, it gets thrown away and the old one keeps serving, so a bad batch of feedback can
+    never make the live model worse.</p>
+    <p>The incidents page shows the currently promoted version, its held-out accuracy, how many
+    corrections it learned from, and a drift number, how different recent alert traffic looks from
+    what the model was trained on. Drift is informational only, nothing acts on it automatically.</p>
+    <p>To trigger a one-off retrain by hand, or run it continuously yourself outside the container</p>
+    <pre><code>python -m app.triage.retrain
+python -m app.triage.retrain --live</code></pre>
 
     <h2 id="attack-chains">Attack chains and tuning</h2>
     <div class="note">

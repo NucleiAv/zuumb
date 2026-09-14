@@ -316,48 +316,79 @@ wsl bash scripts/lab-up.sh     # Wazuh stack -> wait for indexer -> agents -> pr
 .venv/Scripts/python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
-## Detection engines
+## How zuumb detects things on its own
 
-zuumb reads Wazuh's alerts and adds two of its own detectors that emit alerts in
-the same shape (reserved `rule.id` bands: **900001–900999** D1, **901001–901999**
-D2), through the exact ingest path Wazuh alerts use.
+Wazuh already finds a lot by itself. zuumb now also runs two small engines of
+its own that watch for patterns Wazuh's rules were never written to catch, and
+feeds whatever they find through the exact same pipeline every other alert goes
+through (reserved `rule.id` ranges, so you can always tell where an alert came
+from, 900001 to 900999 for the first engine, 901001 to 901999 for the second).
 
-| Detector | Data | Method | How it runs |
-|---|---|---|---|
-| **D1 — auth-log anomaly** | sshd / `/var/log/auth.log` lines, pulled from the Wazuh alerts index | ECOD outlier score on per-host / per-5-min template-count features | **continuous** — the `detector-authlog` container polls every 10 min; `docker compose up` starts it |
-| **D2 — network beacon** | connection records (Zeek `conn.log`, or a `ts,src,dst,port` CSV) | regularity scan — a source calling one destination on a near-fixed interval | **manual CLI only** — `python -m detectors.netflow.run --conn <file>` |
+The first one watches ssh login activity. It pulls the raw auth log lines Wazuh
+already collected, groups them into five minute windows per host, and learns
+what a normal window looks like for that host. When a window looks
+statistically off, say a sudden burst of failed logins, it raises its own
+alert. This one runs continuously. A small container polls the Wazuh alert
+index every ten minutes on its own, nothing to run by hand.
 
-**D2 is not scheduled.** It needs a real network-flow feed — a Zeek/Suricata
-`conn.log` or `nfstream` on a live segment — and this Wazuh-only stack doesn't
-produce one (Wazuh captures no flow data natively). Point D2 at a real
-`conn.log` by hand until such a feed exists; scheduling it against nothing would
-just be a job that always runs on empty input.
+```bash
+python -m detectors.authlog.run --log /var/log/auth.log   # run it ad hoc against a file instead
+```
 
-The incidents page shows a **`continuous detectors:`** line — how long ago each
-scheduled detector last ran, red if stale (no run in 3× its interval) — so a
-silently-dead job is visible rather than assumed-working.
+The second looks for something quite different, network beacons. That's when
+a machine calls out to the same destination over and over on an almost
+perfectly regular schedule, the classic sign of something phoning home to a
+command and control server. This one only runs when you point it at a real
+file of connection records, something like a Zeek `conn.log`.
 
-## Second-opinion retrain loop
+```bash
+python -m detectors.netflow.run --conn <file>
+```
 
-`app/triage/second_opinion.py` — a cheap TF-IDF cross-check on the primary
-Claude verdict, advisory only — starts out trained only on the 34-alert eval
-set. The `retrain-second-opinion` container (also started by
-`docker compose up`) retrains it **weekly** on real analyst corrections
-(`AnalystFeedback` — override a verdict from the incident page and it becomes a
-training example) and only **promotes** a new version if it doesn't score worse
-than the current one on a fixed held-out slice of the eval set. The first-ever
-run always promotes, so the loop isn't silently empty before any feedback exists.
+It isn't scheduled to run continuously because there's nothing feeding it
+live network data yet. Wazuh doesn't capture that kind of traffic on its own,
+and building a fake source just to keep a container busy would defeat the
+point of the whole exercise, so it stays a manual tool until a real network
+sensor exists.
 
-The incidents page shows **`second-opinion model: vN · held-out accuracy · N
-corrections folded in · drift`** — drift is a cosine-similarity check between
-recent alert text and what the model trained on (shown once there's enough
-recent traffic to judge; low = the model may be going stale, informational
-only, nothing acts on it automatically).
+Because a scheduled job can quietly stop working with nobody noticing, the
+incidents page shows a small line near the top saying how long ago each
+continuous detector last checked in. If it hasn't run in a while, that line
+turns red, so a dead job is obvious rather than assumed fine.
 
-Run it once by hand: `python -m app.triage.retrain` (add `--live` for the
-scheduled loop the container runs).
+## Teaching the second opinion from real corrections
 
-D1 also runs ad-hoc against a file: `python -m detectors.authlog.run --log /var/log/auth.log`.
+Every alert zuumb triages gets a verdict from the main Claude model, plus a
+second, much cheaper opinion from a small local model running right there on
+the machine, no API call needed. It exists purely as a sanity check. If the
+two disagree, and the local model thinks something is worse than what Claude
+said, that gets flagged for a human to glance at. Agreement, or a milder local
+opinion, is treated as noise and stays quiet.
+
+At first this local model only knows what it learned from the 34 hand written
+example alerts in the eval set. But every time an analyst corrects a verdict
+in the dashboard, that correction becomes a real training example
+(`AnalystFeedback`). Once a week, a background process gathers whatever
+corrections have piled up, retrains the local model on them, and checks its
+accuracy against a fixed set of held out examples before deciding whether to
+actually put the new version to work.
+
+```bash
+python -m app.triage.retrain            # run one retrain pass by hand
+python -m app.triage.retrain --live     # the loop the container runs, weekly
+```
+
+If the new version isn't at least as good as the one already running, it gets
+thrown away and the old one keeps serving. Nothing about this loop can let the
+model quietly get worse over time, and the very first run always goes live so
+the whole thing isn't sitting silently empty before any feedback shows up.
+
+The incidents page shows which version is live, how many real corrections it
+learned from, how it scores on the held out set, and a rough read on how
+different recent alerts look compared to what it trained on. A big drop in
+that last number is worth a look, it can mean the model's gone stale, but
+nothing acts on it automatically. It's information for a person, same as
+everything else in zuumb.
 
 ## Attack chains — what they are and aren't
 
