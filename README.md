@@ -337,6 +337,26 @@ The incidents page shows a **`continuous detectors:`** line — how long ago eac
 scheduled detector last ran, red if stale (no run in 3× its interval) — so a
 silently-dead job is visible rather than assumed-working.
 
+## Second-opinion retrain loop
+
+`app/triage/second_opinion.py` — a cheap TF-IDF cross-check on the primary
+Claude verdict, advisory only — starts out trained only on the 34-alert eval
+set. The `retrain-second-opinion` container (also started by
+`docker compose up`) retrains it **weekly** on real analyst corrections
+(`AnalystFeedback` — override a verdict from the incident page and it becomes a
+training example) and only **promotes** a new version if it doesn't score worse
+than the current one on a fixed held-out slice of the eval set. The first-ever
+run always promotes, so the loop isn't silently empty before any feedback exists.
+
+The incidents page shows **`second-opinion model: vN · held-out accuracy · N
+corrections folded in · drift`** — drift is a cosine-similarity check between
+recent alert text and what the model trained on (shown once there's enough
+recent traffic to judge; low = the model may be going stale, informational
+only, nothing acts on it automatically).
+
+Run it once by hand: `python -m app.triage.retrain` (add `--live` for the
+scheduled loop the container runs).
+
 D1 also runs ad-hoc against a file: `python -m detectors.authlog.run --log /var/log/auth.log`.
 
 ## Attack chains — what they are and aren't

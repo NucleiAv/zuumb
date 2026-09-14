@@ -272,6 +272,18 @@ This is the part of the plan that's genuinely novel to your environment, not jus
 
 Checkpoint: `/ponytail-review` after each sub-step, `/ponytail-audit` once one full retrain cycle has actually run and a promoted model is measurably not worse than its predecessor on the held-out set.
 
+**Continuous-operation status (added after D4 shipped):** the retrain loop runs
+as the `retrain-second-opinion` docker-compose service, weekly, and is
+genuinely gated (`app/triage/retrain.py::promote_if_better` — a worse candidate
+is rejected, unit-tested). **`AnalystFeedback` had 0 rows in the live DB when
+this shipped** — nobody has overridden a verdict yet, so the loop's first run
+trains on the eval set alone (same as D3's original behaviour) and exists to
+prove the pipeline + registry work, not because there was real feedback to
+learn from. It self-heals as analysts use the override feature; no code change
+needed when that happens. **Separately noted: the D1 `detector-authlog`
+service had never run (`DetectorCursor` had zero rows) as of this check-in —
+worth confirming `docker compose up` actually includes it.**
+
 ### Phase D5 — Adversarial robustness check
 
 *Persona: Security Engineer.*

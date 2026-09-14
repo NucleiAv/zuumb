@@ -45,6 +45,22 @@ services:
       disable: true
     restart: unless-stopped
 
+  # D4 retrain loop for the second-opinion classifier (app/triage/second_opinion.py):
+  # weekly, folds in real analyst corrections, only promotes a new version if it
+  # doesn't regress on the held-out eval split. Own process, same reasoning as
+  # detector-authlog — training is real CPU work, never inside uvicorn.
+  retrain-second-opinion:
+    image: ghcr.io/nucleiav/zuumb:latest
+    env_file: .env
+    command: ["python", "-m", "app.triage.retrain", "--live"]
+    volumes:
+      - zuumb-data:/data
+    depends_on:
+      - zuumb
+    healthcheck:
+      disable: true
+    restart: unless-stopped
+
   postgres:
     image: postgres:16-alpine
     profiles: ["pg"]

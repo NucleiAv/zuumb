@@ -45,6 +45,12 @@ class Settings(BaseSettings):
     chain_strong_link_hours: int = 24
     chain_max_link_hours: int = 72
 
+    # D4: retrain loop for the second-opinion classifier (app/triage/retrain.py).
+    # A promoted model's pipeline file lives under model_dir; the loop runs as
+    # its own process, weekly by default.
+    model_dir: str = "data/models"
+    retrain_interval_seconds: int = 7 * 24 * 3600
+
     # Active response (Phase 14). SEPARATE least-privilege Manager API user — never
     # the ingestion credential. Its RBAC policy should allow only active-response:command.
     wazuh_ar_api_url: str = "https://localhost:55000"
