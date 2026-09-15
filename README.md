@@ -439,8 +439,6 @@ Knobs (all `.env`-overridable):
 
 ## Automated mitigation (active response, Phase 14)
 
-### In plain English
-
 zuumb reads Wazuh alerts, groups them into **incidents**, and for each incident
 suggests **response tasks** — short instructions like "block that IP" or "lock
 that account". Until Phase 14 those were just notes for a person to act on by
@@ -455,8 +453,6 @@ Three things are always true:
   any command".
 - Out of the box it runs in **practice mode** (`RESPONSE_DRY_RUN=true`): the
   button works, writes a record, and touches nothing.
-
-### Words used here
 
 | Term | Plain meaning |
 |------|---------------|
