@@ -94,7 +94,8 @@ def test_live_once_flags_a_burst_and_creates_a_cursor():
 
     with get_session() as s:
         cur = s.get(DetectorCursor, "authlog")
-        assert cur.last_ts is not None and cur.last_run_at == _NOW
+        assert cur.last_ts is not None
+        assert cur.last_run_at.replace(tzinfo=None) == _NOW  # written aware; compare naive
         assert cur.interval_seconds == 600 and cur.alerts_emitted == 1
         assert s.exec(select(Alert).where(Alert.rule_id == "900001")).one()
 

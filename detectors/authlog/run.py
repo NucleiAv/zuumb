@@ -70,11 +70,17 @@ def live_once(*, client=None, now: datetime | None = None, interval_seconds: int
     from app.db.models import DetectorCursor
     from app.db.session import get_session, init_db
 
-    now = now or datetime.now(timezone.utc).replace(tzinfo=None)
+    now = now or datetime.now(timezone.utc)
+    # Wazuh's range query wants a naive-UTC string, matching every other alert
+    # timestamp in this app; DetectorCursor.last_run_at needs the opposite, an
+    # aware value, to match its own default (models._now()) — the column
+    # rejects a naive write outright once the table's seen an aware one.
+    naive_now = now.replace(tzinfo=None) if now.tzinfo else now
+    aware_now = now if now.tzinfo else now.replace(tzinfo=timezone.utc)
     init_db()
     with get_session() as s:
         cur = s.get(DetectorCursor, "authlog") or DetectorCursor(detector="authlog")
-        lines = fetch_auth_lines(now - timedelta(hours=_FETCH_HOURS), client=client)
+        lines = fetch_auth_lines(naive_now - timedelta(hours=_FETCH_HOURS), client=client)
         rows = window_features(iter_events(lines, miner=new_miner()))
 
         emitted = 0
@@ -86,7 +92,7 @@ def live_once(*, client=None, now: datetime | None = None, interval_seconds: int
                 emitted = ingest_with_retry(alerts) if alerts else 0
                 cur.last_ts = max(r.window_start for r in recent)
 
-        cur.last_run_at = now
+        cur.last_run_at = aware_now
         cur.interval_seconds = interval_seconds
         cur.alerts_emitted += emitted
         s.add(cur)
