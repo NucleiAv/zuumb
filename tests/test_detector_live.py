@@ -131,3 +131,14 @@ def test_detector_status_reports_minutes_ago_and_stale_flag():
         st = {d["name"]: d for d in _detector_status(s, now=now)}
     assert st["authlog"]["stale"] is False and st["authlog"]["minutes_ago"] == 4
     assert st["dead"]["stale"] is True             # 120m > 3 * 10m
+
+
+def test_detector_status_handles_an_aware_last_run_at():
+    """DetectorCursor.last_run_at defaults via models._now() (offset-aware UTC),
+    unlike the naive-UTC datetimes used elsewhere. Regression for a real crash:
+    TypeError: can't subtract offset-naive and offset-aware datetimes."""
+    with get_session() as s:
+        s.add(DetectorCursor(detector="authlog", interval_seconds=600))  # last_run_at: real _now()
+        s.commit()
+        st = {d["name"]: d for d in _detector_status(s)}  # now=None -> real aware now too
+    assert st["authlog"]["minutes_ago"] == 0 and st["authlog"]["stale"] is False
