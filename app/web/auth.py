@@ -30,6 +30,7 @@ from markupsafe import Markup
 from app.config import settings
 from app.db.models import Credential
 from app.db.session import get_session
+from app.system_settings import ai_triage_enabled, set_ai_triage_enabled
 
 COOKIE = "zuumb_session"
 _MAX_AGE = 60 * 60 * 12  # 12h
@@ -82,6 +83,13 @@ def check_login(username: str, password: str) -> bool:
     return (bool(settings.dashboard_password)
             and hmac.compare_digest(username, settings.dashboard_user)
             and hmac.compare_digest(password, settings.dashboard_password))
+
+
+def ai_status() -> bool:
+    """Current nav-bar AI detection state, for base.html. A plain function (no
+    request needed) since this is one deployment-wide switch, not per-session."""
+    with get_session() as s:
+        return ai_triage_enabled(s)
 
 
 def auth_enabled() -> bool:
@@ -159,6 +167,7 @@ _templates.env.globals["csrf_field"] = csrf_field
 _templates.env.globals["show_account_menu"] = (
     lambda req: auth_enabled() and read_session(req) is not None
 )
+_templates.env.globals["ai_status"] = ai_status
 
 
 # --- routes -----------------------------------------------------------------
@@ -235,3 +244,19 @@ def settings_credentials(
     resp.set_cookie(COOKIE, _make_cookie(new_username.strip()), max_age=_MAX_AGE,
                     httponly=True, samesite="lax", path="/")
     return resp
+
+
+@router.post("/settings/ai-detection/toggle")
+def toggle_ai_detection(
+    request: Request,
+    next: str = Form("/"),
+    csrf_ok: None = Depends(require_csrf),
+):
+    """The nav-bar AI toggle. Deployment-wide, not per-analyst — see
+    app.system_settings. Flips the current value; the new state takes effect
+    on the next alert triaged, live traffic already in flight is unaffected."""
+    if auth_enabled() and read_session(request) is None:
+        return RedirectResponse("/login?next=" + _safe_next(next), status_code=303)
+    with get_session() as s:
+        set_ai_triage_enabled(s, not ai_triage_enabled(s))
+    return RedirectResponse(_safe_next(next), status_code=303)

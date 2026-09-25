@@ -35,6 +35,11 @@ class Verdict(SQLModel, table=True):
     # mini-migration adds it; drives nothing (severity/correlation ignore it).
     second_opinion: str | None = None              # benign | suspicious | malicious
     second_opinion_confidence: float | None = None
+    # "llm" (default) or "ml_fallback" (the AI-detection nav toggle was off, so
+    # the second-opinion classifier stood in as the primary verdict). Nullable so
+    # the mini-migration adds it; a NULL on an old row means "llm" — it predates
+    # the toggle, back when the LLM was the only option.
+    verdict_source: str | None = "llm"
 
 
 class Incident(SQLModel, table=True):
@@ -139,6 +144,14 @@ class DetectorCursor(SQLModel, table=True):
     last_run_at: datetime = Field(default_factory=_now)
     interval_seconds: int = 600                      # how often it's scheduled; drives stale detection
     alerts_emitted: int = 0                          # running total this cursor has ingested
+
+
+class SystemSetting(SQLModel, table=True):
+    """Single-row (id=1) deployment-wide toggles — not a per-analyst preference.
+    Currently just whether triage calls the LLM at all (the nav-bar AI toggle)."""
+    id: int | None = Field(default=1, primary_key=True)
+    ai_triage_enabled: bool = True
+    updated_at: datetime = Field(default_factory=_now)
 
 
 class ModelVersion(SQLModel, table=True):
