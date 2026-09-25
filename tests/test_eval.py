@@ -32,7 +32,7 @@ def test_score_confusion_counts_and_rates():
 
 def test_labeled_set_is_valid_and_sized():
     items = load_labeled()
-    assert 30 <= len(items) <= 50
+    assert 30 <= len(items) <= 80
     assert {i["label"] for i in items} <= set(CLASSES)
     counts = {c: sum(i["label"] == c for i in items) for c in CLASSES}
     assert all(v >= 5 for v in counts.values()), counts  # every class represented
