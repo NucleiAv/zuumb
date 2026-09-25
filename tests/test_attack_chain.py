@@ -28,6 +28,30 @@ def test_tactic_rank_follows_kill_chain_order():
     assert tactic_rank("nonsense") == tactic_rank("also nonsense")  # unknown -> stable sentinel
 
 
+def test_technique_fallback_covers_the_newly_added_technique_ids():
+    from app.attack_chain.stitcher import stage_label_with_source
+    a = Alert(id=1, wazuh_alert_id="x", timestamp=datetime(2026, 1, 1), rule_id="1",
+             rule_description="d", raw_json="{}")
+    assert stage_label_with_source([a], {1: "T1562.001"}) == ("Defense Evasion", "fallback")
+    assert stage_label_with_source([a], {1: "T1554"}) == ("Persistence", "fallback")
+
+
+def test_technique_fallback_falls_back_to_the_base_technique_id():
+    """T1053.005 isn't listed itself, but its base T1053 is — the lookup should
+    still resolve instead of dropping to unknown just because of the suffix."""
+    from app.attack_chain.stitcher import stage_label_with_source
+    a = Alert(id=1, wazuh_alert_id="x", timestamp=datetime(2026, 1, 1), rule_id="1",
+             rule_description="d", raw_json="{}")
+    assert stage_label_with_source([a], {1: "T1053.005"}) == ("Persistence", "fallback")
+
+
+def test_technique_fallback_stays_unknown_for_a_genuinely_uncovered_technique():
+    from app.attack_chain.stitcher import stage_label_with_source
+    a = Alert(id=1, wazuh_alert_id="x", timestamp=datetime(2026, 1, 1), rule_id="1",
+             rule_description="d", raw_json="{}")
+    assert stage_label_with_source([a], {1: "T1583.001"}) == ("Unknown", "unknown")
+
+
 def test_group_by_shared_entity_is_transitive():
     incs = [Incident(id=1, title="a"), Incident(id=2, title="b"), Incident(id=3, title="c")]
     ent = {1: {"host:h1"}, 2: {"host:h1", "ip:9.9.9.9"}, 3: {"user:bob"}}
