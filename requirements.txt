@@ -1,7 +1,12 @@
 # POC (Phases 1-4): ingestion -> triage -> correlation -> CLI
 httpx
 anthropic
-sqlmodel
+# Pinned: 0.0.47 made datetime columns require timezone-aware values by
+# default, breaking every naive-UTC timestamp this app writes. A Docker
+# rebuild with an unpinned version silently picked that up while the app's
+# own code (and this pin) still assumes the old, lenient behavior.
+sqlmodel==0.0.42
+sqlalchemy==2.0.52
 pydantic-settings
 pytest
 fastapi
