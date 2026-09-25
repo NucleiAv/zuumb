@@ -1,6 +1,9 @@
 """Triage agent: one Alert -> Claude -> a structured Verdict row.
 
-The LLM call is injectable (`call=`) so tests never hit the API.
+The LLM call is injectable (`call=`) so tests never hit the API. When the
+nav-bar AI detection toggle is off (`app.system_settings`), the LLM is
+skipped entirely and the second-opinion classifier stands in as the primary
+verdict source instead — see `triage_alert` below.
 """
 from __future__ import annotations
 
@@ -16,6 +19,7 @@ from app.db.models import Alert, Verdict
 from app.db.session import get_session, init_db
 from app.feedback.logger import few_shot_block
 from app.redact import redact
+from app.system_settings import ai_triage_enabled
 
 PROMPT_PATH = Path(__file__).parents[2] / "prompts" / "triage_v1.md"
 
@@ -94,22 +98,44 @@ def triage_alert(
     own = session is None
     session = session or get_session()
     try:
-        system = PROMPT_PATH.read_text(encoding="utf-8") + few_shot_block(session)  # last-K analyst corrections
         brief = _alert_brief(alert)
-        out = call(system, brief)
-        verdict = Verdict(
-            alert_id=alert.id,
-            verdict=out["verdict"],
-            confidence=float(out["confidence"]),
-            reasoning_text=out["reasoning"],
-            mitre_technique=out.get("mitre_technique"),
-            model_version=settings.anthropic_model,
-        )
-        try:  # D3: advisory cross-check; must never break the primary verdict
+        if ai_triage_enabled(session):
+            system = PROMPT_PATH.read_text(encoding="utf-8") + few_shot_block(session)  # last-K analyst corrections
+            out = call(system, brief)
+            verdict = Verdict(
+                alert_id=alert.id,
+                verdict=out["verdict"],
+                confidence=float(out["confidence"]),
+                reasoning_text=out["reasoning"],
+                mitre_technique=out.get("mitre_technique"),
+                model_version=settings.anthropic_model,
+                verdict_source="llm",
+            )
+            try:  # D3: advisory cross-check; must never break the primary verdict
+                from app.triage.second_opinion import second_opinion
+                verdict.second_opinion, verdict.second_opinion_confidence = second_opinion(brief)
+            except Exception as e:  # noqa: BLE001
+                logging.getLogger("uvicorn.error").warning("second opinion skipped: %s", e)
+        else:
+            # AI detection toggled off (nav bar): no LLM call at all. The
+            # second-opinion classifier becomes the primary verdict source, so
+            # alerts still get triaged automatically, just deterministically.
             from app.triage.second_opinion import second_opinion
-            verdict.second_opinion, verdict.second_opinion_confidence = second_opinion(brief)
-        except Exception as e:  # noqa: BLE001
-            logging.getLogger("uvicorn.error").warning("second opinion skipped: %s", e)
+            label, confidence = second_opinion(brief)
+            verdict = Verdict(
+                alert_id=alert.id,
+                verdict=label,
+                confidence=confidence,
+                reasoning_text=(
+                    "AI detection is switched off for this deployment, so this verdict "
+                    "came from the local second-opinion classifier instead of the LLM "
+                    "triage agent. Turn AI detection back on from the nav bar for a "
+                    "reasoned, LLM-written verdict on new alerts."
+                ),
+                mitre_technique=None,
+                model_version="second_opinion",
+                verdict_source="ml_fallback",
+            )
         session.add(verdict)
         session.commit()
         session.refresh(verdict)

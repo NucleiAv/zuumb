@@ -365,7 +365,7 @@ two disagree, and the local model thinks something is worse than what Claude
 said, that gets flagged for a human to glance at. Agreement, or a milder local
 opinion, is treated as noise and stays quiet.
 
-At first this local model only knows what it learned from the 34 hand written
+At first this local model only knows what it learned from the hand written
 example alerts in the eval set. But every time an analyst corrects a verdict
 in the dashboard, that correction becomes a real training example
 (`AnalystFeedback`). Once a week, a background process gathers whatever
@@ -389,6 +389,25 @@ different recent alerts look compared to what it trained on. A big drop in
 that last number is worth a look, it can mean the model's gone stale, but
 nothing acts on it automatically. It's information for a person, same as
 everything else in zuumb.
+
+## Turning AI detection off
+
+There's a switch in the top nav bar, labeled AI ON or AI OFF, that any
+logged in analyst can click. It's one setting for the whole deployment, not
+a personal preference, since triage runs once in the background as alerts
+come in rather than once per person looking at the dashboard.
+
+With it on, every new alert goes through the normal path, the Claude model
+reads it and writes a verdict with its reasoning in plain language. Click it
+off and that call stops happening entirely, no API cost, no LLM in the loop
+at all. Alerts still get triaged automatically though, just by the small
+local classifier described above standing in as the primary verdict instead
+of a cross check. It won't have a written explanation, only a label and a
+confidence number, and the dashboard says plainly where that verdict came
+from so nobody mistakes it for the LLM's reasoning.
+
+Flip it back on and the next alert that comes in goes straight back through
+Claude, nothing needs a restart.
 
 ## Attack chains — what they are and aren't
 
@@ -727,7 +746,7 @@ keeps `.env`, `*.db`, the landing page, and the planning docs out of the image.
 - **Phase 7** attack chain stitcher (`app/attack_chain/stitcher.py`) + `/chains` view — done.
 - **Phase 8** response layer (`app/response/playbooks.py`, propose-only, no execution) — done.
 - **Phase 9** feedback loop (`app/feedback/logger.py`, analyst override → few-shot in triage prompt) — done.
-- **Phase 10** eval harness (`eval/run_eval.py`, 34-alert labeled set) — done; baseline acc ~0.82, +few-shot ~0.94 ([eval/RESULTS.md](eval/RESULTS.md)). Directional only: small self-labeled synthetic set, one annotator, default (non-zero) model temperature — not a certified benchmark.
+- **Phase 10** eval harness (`eval/run_eval.py`) — done; baseline acc ~0.82, +few-shot ~0.94 against the original 34-alert labeled set ([eval/RESULTS.md](eval/RESULTS.md)). The labeled set has since grown to 56 alerts (see the Detection track notes below); those numbers haven't been rerun against it yet. Directional only: small self-labeled synthetic set, one annotator, default (non-zero) model temperature — not a certified benchmark.
 - **Phase 12** live Wazuh ingestion (`app/ingestion/wazuh_client.py` poller + `app/pipeline.py`) — done against a live 4.9.2 stack.
 - **Phase 13** attack chains at scale — `CHAIN_MAX_ENTITY_SPREAD` knob, `scripts/chain_quality.py` diagnostic, container agent lab (`docker/agent/`, `docker-compose.agents.yml`); validation ongoing against real traffic.
 - **Phase 14** human-approved active response — allowlisted Wazuh AR dispatch (`app/response/active_response.py`), approve→dispatch flow with dry-run default + audit log (`app/response/approve.py`, `/audit`); verified live against a throwaway agent (real iptables DROP rule).

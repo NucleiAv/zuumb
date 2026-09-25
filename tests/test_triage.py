@@ -6,6 +6,7 @@ from sqlmodel import select
 
 from app.db.models import Alert, Verdict
 from app.db.session import get_session, init_db
+from app.system_settings import set_ai_triage_enabled
 from app.triage.agent import _alert_brief, _extract_verdict, triage_alert
 
 
@@ -68,3 +69,40 @@ def test_triage_rejects_unpersisted_alert():
     with pytest.raises(ValueError):
         triage_alert(Alert(wazuh_alert_id="x", timestamp=None, rule_id="1",
                            rule_description="d", raw_json="{}"), call=lambda s, u: {})
+
+
+def test_triage_marks_the_verdict_source_llm_by_default():
+    alert = _make_alert(wid="t-src-llm")
+    fake = lambda system, user: {  # noqa: E731
+        "verdict": "benign", "confidence": 0.5, "reasoning": "x", "mitre_technique": None,
+    }
+    v = triage_alert(alert, call=fake)
+    assert v.verdict_source == "llm"
+
+
+def test_triage_skips_the_llm_when_ai_detection_is_off():
+    alert = _make_alert(wid="t-ai-off")
+    with get_session() as s:
+        set_ai_triage_enabled(s, False)
+
+    def fake(system, user):
+        raise AssertionError("the LLM must not be called while AI detection is off")
+
+    v = triage_alert(alert, call=fake)
+    assert v.verdict_source == "ml_fallback"
+    assert v.model_version == "second_opinion"
+    assert v.verdict in ("benign", "suspicious", "malicious")
+    assert v.second_opinion is None  # nothing to cross-check the fallback against itself
+    assert "AI detection is switched off" in v.reasoning_text
+
+
+def test_triage_resumes_the_llm_once_ai_detection_is_back_on():
+    alert = _make_alert(wid="t-ai-back-on")
+    with get_session() as s:
+        set_ai_triage_enabled(s, False)
+        set_ai_triage_enabled(s, True)
+    fake = lambda system, user: {  # noqa: E731
+        "verdict": "suspicious", "confidence": 0.6, "reasoning": "x", "mitre_technique": None,
+    }
+    v = triage_alert(alert, call=fake)
+    assert v.verdict_source == "llm" and v.verdict == "suspicious"

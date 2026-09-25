@@ -76,6 +76,14 @@
     border: 1px solid var(--border); border-radius: 4px; transition: border-color .15s;
   }
   #theme-toggle:hover { border-color: var(--accent); }
+  #ai-toggle {
+    font-size: 11px; font-weight: 700; letter-spacing: .03em; line-height: 1;
+    padding: .35rem .55rem; cursor: pointer; border-radius: 4px;
+    border: 1px solid var(--border); background: var(--card); color: var(--muted);
+    transition: border-color .15s, color .15s, background .15s;
+  }
+  #ai-toggle.on { color: #fff; background: var(--accent); border-color: var(--accent); }
+  #ai-toggle:hover { border-color: var(--accent); }
 
   /* top navigation-progress bar (item 5: no hard flash on filter refetch) */
   #navprogress {
@@ -280,6 +288,15 @@
   </nav>
   <span class="spacer"></span>
   {% if show_account_menu(request) %}
+  {% set ai_on = ai_status() %}
+  <form method="post" action="/settings/ai-detection/toggle" style="display:inline;margin-right:.5rem">
+    {{ csrf_field(request) }}
+    <input type="hidden" name="next" value="{{ request.url.path }}">
+    <button type="submit" id="ai-toggle" class="{{ 'on' if ai_on else '' }}"
+      title="{{ 'AI detection is on: new alerts get an LLM-written verdict and reasoning. Click to turn it off.' if ai_on else 'AI detection is off: new alerts get an automatic verdict from the local ML classifier instead, no LLM call. Click to turn it back on.' }}">
+      AI {{ 'ON' if ai_on else 'OFF' }}
+    </button>
+  </form>
   <form method="post" action="/logout" style="display:inline;margin-right:.5rem">
     <button type="submit" style="font-size:12px;padding:.3rem .5rem;background:var(--card);
       color:var(--muted);border:1px solid var(--border);border-radius:4px;cursor:pointer">Sign out</button>

@@ -282,6 +282,7 @@
         <li><a href="#dashboard">The dashboard</a></li>
         <li><a href="#detection-engines">Detection engines</a></li>
         <li><a href="#second-opinion">Second opinion and retrain</a></li>
+        <li><a href="#ai-toggle">Turning AI detection off</a></li>
         <li><a href="#attack-chains">Attack chains and tuning</a></li>
         <li><a href="#active-response">Automated mitigation</a></li>
         <li><a href="#evaluation">Evaluation</a></li>
@@ -649,6 +650,20 @@ curl -sk -H "Authorization: Bearer $TOKEN" "https://localhost:55000/agents/summa
     <pre><code>python -m app.triage.retrain
 python -m app.triage.retrain --live</code></pre>
 
+    <h2 id="ai-toggle">Turning AI detection off</h2>
+    <p>The nav bar carries a switch, AI ON or AI OFF, next to the theme toggle. Any logged in
+    analyst can click it, and it applies to the whole deployment at once rather than to just the
+    person looking at the screen, since triage runs once in the background as alerts arrive.</p>
+    <div class="note">
+      <span class="tag">What changes when it's off</span>
+      The Claude call is skipped entirely, no API cost and no LLM in the loop. The second-opinion
+      classifier described above takes over as the primary verdict source instead of a cross
+      check, so alerts still get triaged automatically, just without written reasoning, only a
+      label and a confidence number. The alert detail page marks that verdict as coming from the
+      local classifier so nobody mistakes it for Claude's reasoning. Flipping it back on picks up
+      from the very next alert, nothing needs a restart.
+    </div>
+
     <h2 id="attack-chains">Attack chains and tuning</h2>
     <div class="note">
       <span class="tag">What a chain is, and isn't</span>
@@ -764,8 +779,9 @@ python -m app.triage.retrain --live</code></pre>
     </div>
 
     <h2 id="evaluation">Evaluation</h2>
-    <p>Triage quality is measured against a hand-labelled set of 34 synthetic Wazuh alerts, 14
-    benign, 10 suspicious, 10 malicious.</p>
+    <p>Triage quality is measured against a hand-labelled set of synthetic Wazuh alerts, currently
+    56 of them (20 benign, 18 suspicious, 18 malicious). The numbers below are from the original
+    34-alert version and have not been rerun against the larger set yet.</p>
     <div class="note">
       <span class="tag">Read these as directional</span>
       This is an early internal eval, not a certified benchmark: the set is small and synthetic,

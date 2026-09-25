@@ -94,7 +94,8 @@ def test_live_once_flags_a_burst_and_creates_a_cursor():
 
     with get_session() as s:
         cur = s.get(DetectorCursor, "authlog")
-        assert cur.last_ts is not None and cur.last_run_at == _NOW
+        assert cur.last_ts is not None
+        assert cur.last_run_at.replace(tzinfo=None) == _NOW  # written aware; compare naive
         assert cur.interval_seconds == 600 and cur.alerts_emitted == 1
         assert s.exec(select(Alert).where(Alert.rule_id == "900001")).one()
 
@@ -131,3 +132,14 @@ def test_detector_status_reports_minutes_ago_and_stale_flag():
         st = {d["name"]: d for d in _detector_status(s, now=now)}
     assert st["authlog"]["stale"] is False and st["authlog"]["minutes_ago"] == 4
     assert st["dead"]["stale"] is True             # 120m > 3 * 10m
+
+
+def test_detector_status_handles_an_aware_last_run_at():
+    """DetectorCursor.last_run_at defaults via models._now() (offset-aware UTC),
+    unlike the naive-UTC datetimes used elsewhere. Regression for a real crash:
+    TypeError: can't subtract offset-naive and offset-aware datetimes."""
+    with get_session() as s:
+        s.add(DetectorCursor(detector="authlog", interval_seconds=600))  # last_run_at: real _now()
+        s.commit()
+        st = {d["name"]: d for d in _detector_status(s)}  # now=None -> real aware now too
+    assert st["authlog"]["minutes_ago"] == 0 and st["authlog"]["stale"] is False

@@ -78,13 +78,21 @@ def compute_stats(session: Session, since=None, until=None) -> dict:
     }
 
 
+def _naive_utc(dt: datetime) -> datetime:
+    """Strip tzinfo if present. DetectorCursor.last_run_at defaults via
+    models._now() (aware), but everything else here is naive-UTC (see module
+    docstring) — SQLite round-trips a stored aware value as aware too, so a
+    bare subtraction can mix aware and naive and blow up."""
+    return dt.replace(tzinfo=None) if dt.tzinfo is not None else dt
+
+
 def _detector_status(session: Session, now: datetime | None = None) -> list[dict]:
     """Per continuous detector: minutes since its last scheduled run, and whether
     that's gone stale (> 3x its interval) — a silently-dead job to flag."""
-    now = now or datetime.now(timezone.utc).replace(tzinfo=None)
+    now = _naive_utc(now or datetime.now(timezone.utc))
     out = []
     for c in session.exec(select(DetectorCursor).order_by(DetectorCursor.detector)).all():
-        mins = (now - c.last_run_at).total_seconds() / 60
+        mins = (now - _naive_utc(c.last_run_at)).total_seconds() / 60
         out.append({
             "name": c.detector,
             "minutes_ago": round(mins),

@@ -11,9 +11,8 @@ same alert-brief text the LLM sees.
 D4 (`app/triage/retrain.py`) periodically retrains this on real analyst
 corrections and promotes a new version only if it doesn't regress on a held-out
 set — see that module. Until a version has been promoted, `_model()` falls back
-to training fresh on `eval/labeled_set.jsonl` (34 synthetic alerts) alone, the
-original D3 behaviour: a rough signal by construction; treat the numbers as
-directional.
+to training fresh on `eval/labeled_set.jsonl` alone, the original D3 behaviour:
+a rough signal by construction; treat the numbers as directional.
 """
 from __future__ import annotations
 
@@ -47,7 +46,7 @@ def new_pipeline() -> Pipeline:
 
 
 def eval_examples() -> list[tuple[str, str]]:
-    """(brief, label) for every row in the 34-alert eval set."""
+    """(brief, label) for every row in the eval set."""
     from app.ingestion.wazuh_client import normalize_alert  # lazy: avoid import cycle
 
     rows = [json.loads(ln) for ln in LABELED_SET.read_text(encoding="utf-8").splitlines() if ln.strip()]

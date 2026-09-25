@@ -32,12 +32,46 @@ TACTIC_ORDER = [
 ]
 _UNKNOWN_RANK = len(TACTIC_ORDER)
 
-# Fallback when an alert carries a technique id but no tactic name.
+# Fallback when an alert carries a technique id but no tactic name. Keyed by
+# base technique id — MITRE ATT&CK Enterprise's primary tactic for each. A
+# dotted sub-technique like T1053.005 isn't listed separately; _tactic_for_
+# technique() below falls back to its base id, T1053, so this table only
+# needs to grow when a genuinely new base technique shows up, not every
+# sub-technique variant of one already covered.
 _TECHNIQUE_TACTIC = {
-    "T1595": "Reconnaissance", "T1190": "Initial Access", "T1078": "Initial Access",
-    "T1110": "Credential Access", "T1059": "Execution", "T1053": "Persistence",
-    "T1041": "Exfiltration",
+    "T1003": "Credential Access",    # OS Credential Dumping
+    "T1005": "Collection",           # Data from Local System
+    "T1021": "Lateral Movement",     # Remote Services
+    "T1027": "Defense Evasion",      # Obfuscated Files or Information
+    "T1041": "Exfiltration",         # Exfiltration Over C2 Channel
+    "T1053": "Persistence",          # Scheduled Task/Job
+    "T1059": "Execution",            # Command and Scripting Interpreter
+    "T1068": "Privilege Escalation", # Exploitation for Privilege Escalation
+    "T1071": "Command and Control",  # Application Layer Protocol
+    "T1078": "Initial Access",       # Valid Accounts
+    "T1098": "Persistence",          # Account Manipulation
+    "T1110": "Credential Access",    # Brute Force
+    "T1136": "Persistence",          # Create Account
+    "T1190": "Initial Access",       # Exploit Public-Facing Application
+    "T1204": "Execution",            # User Execution
+    "T1486": "Impact",               # Data Encrypted for Impact
+    "T1490": "Impact",               # Inhibit System Recovery
+    "T1505": "Persistence",          # Server Software Component (web shell)
+    "T1543": "Persistence",          # Create or Modify System Process
+    "T1548": "Privilege Escalation", # Abuse Elevation Control Mechanism
+    "T1554": "Persistence",          # Compromise Client Software Binary
+    "T1560": "Collection",           # Archive Collected Data
+    "T1562": "Defense Evasion",      # Impair Defenses
+    "T1571": "Command and Control",  # Non-Standard Port
+    "T1595": "Reconnaissance",       # Active Scanning
+    "T1621": "Credential Access",    # Multi-Factor Authentication Request Generation
 }
+
+
+def _tactic_for_technique(tech: str) -> str | None:
+    """`_TECHNIQUE_TACTIC` lookup with a base-id fallback: T1053.005 matches
+    its parent T1053 entry if the dotted id itself isn't listed."""
+    return _TECHNIQUE_TACTIC.get(tech) or _TECHNIQUE_TACTIC.get(tech.split(".")[0])
 
 
 def tactic_rank(name: str) -> int:
@@ -54,8 +88,9 @@ def _incident_tactics(alerts: list[Alert], technique_by_alert: dict[int, str | N
         tactics.update(raw.get("rule", {}).get("mitre", {}).get("tactic", []) or [])
         # native rule.mitre.id first (via techniques_for), then the model's guess
         for tech in techniques_for(a, technique_by_alert.get(a.id)):
-            if tech in _TECHNIQUE_TACTIC:
-                tactics.add(_TECHNIQUE_TACTIC[tech])
+            tac = _tactic_for_technique(tech)
+            if tac:
+                tactics.add(tac)
     return tactics
 
 
@@ -75,8 +110,9 @@ def stage_label_with_source(
     guessed: set[str] = set()
     for a in alerts:
         for tech in techniques_for(a, technique_by_alert.get(a.id)):
-            if tech in _TECHNIQUE_TACTIC:
-                guessed.add(_TECHNIQUE_TACTIC[tech])
+            tac = _tactic_for_technique(tech)
+            if tac:
+                guessed.add(tac)
     if guessed:
         return min(guessed, key=tactic_rank), "fallback"
     return "Unknown", "unknown"

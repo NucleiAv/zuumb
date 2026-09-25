@@ -134,6 +134,42 @@ def test_forgot_password_page_is_reachable_without_a_session(secured):
     assert r.status_code == 200 and "DASHBOARD_PASSWORD_RESET" in r.text
 
 
+# --- nav-bar AI detection toggle ---------------------------------------------
+
+def test_dashboard_shows_the_ai_toggle_when_logged_in(secured):
+    secured.cookies.set("zuumb_session", _make_cookie("admin"))
+    r = secured.get("/")
+    assert r.status_code == 200 and "AI ON" in r.text
+
+
+def test_ai_toggle_requires_login(secured):
+    assert secured.post("/settings/ai-detection/toggle", data={"next": "/"}).status_code == 401
+
+
+def test_ai_toggle_requires_csrf(secured):
+    secured.cookies.set("zuumb_session", _make_cookie("admin"))
+    assert secured.post("/settings/ai-detection/toggle", data={"next": "/"}).status_code == 403
+
+
+def test_ai_toggle_flips_the_setting_and_redirects_to_next(secured):
+    from app.system_settings import ai_triage_enabled
+
+    secured.cookies.set("zuumb_session", _make_cookie("admin"))
+    csrf = read_session(_Req(secured.cookies["zuumb_session"]))["csrf"]
+    with get_session() as s:
+        assert ai_triage_enabled(s) is True  # starts enabled
+
+    r = secured.post("/settings/ai-detection/toggle", data={"next": "/chains", "_csrf": csrf})
+    assert r.status_code == 303 and r.headers["location"] == "/chains"
+    with get_session() as s:
+        assert ai_triage_enabled(s) is False
+
+    r = secured.post("/settings/ai-detection/toggle", data={"next": "/", "_csrf": csrf})
+    assert r.status_code == 303 and r.headers["location"] == "/"
+    with get_session() as s:
+        assert ai_triage_enabled(s) is True
+
+
 class _Req:
     """Minimal Request stand-in for read_session (only needs .cookies)."""
     def __init__(self, session_cookie: str):

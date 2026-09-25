@@ -8,6 +8,7 @@ from app.config import settings
 from app.db.models import Alert, AnalystFeedback, ModelVersion, Verdict
 from app.db.session import get_session
 from app.triage import second_opinion as so
+from app.triage.second_opinion import eval_examples
 from app.triage.retrain import (
     _eval_split,
     drift_score,
@@ -43,7 +44,7 @@ def test_eval_split_is_stratified_and_stable_across_calls():
     train1, held1 = _eval_split()
     train2, held2 = _eval_split()
     assert train1 == train2 and held1 == held2       # same seed -> same rows every time
-    assert len(train1) + len(held1) == 34
+    assert len(train1) + len(held1) == len(eval_examples())
     labels = {lbl for _, lbl in held1}
     assert labels <= {"benign", "suspicious", "malicious"} and len(held1) >= 3
 
