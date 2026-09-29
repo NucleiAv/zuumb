@@ -8,6 +8,15 @@
   status {{ incident.status }} &middot;
   created <time datetime="{{ incident.created_at|isoz }}">{{ incident.created_at|isoz }}</time>
 </p>
+{% if similar %}
+<div class="banner">
+  <b>Might be the same campaign as {{ similar|length }} other incident{{ '' if similar|length == 1 else 's' }}.</b>
+  These share no host, IP, or user with this one, so the correlation engine and chain stitcher
+  never linked them, but a local embedding model reads their alerts as the same kind of activity:
+  {% for s in similar %}<a href="/incidents/{{ s.incident.id }}">#{{ s.incident.id }}</a> ({{ '%.2f'|format(s.score) }}){{ ", " if not loop.last }}{% endfor %}.
+  Advisory only, worth a glance, not a confirmed link.
+</div>
+{% endif %}
 <table>
   <thead>
     <tr>

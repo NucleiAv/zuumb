@@ -316,6 +316,30 @@ wsl bash scripts/lab-up.sh     # Wazuh stack -> wait for indexer -> agents -> pr
 .venv/Scripts/python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
+## What's rule-based, what's learned, and what's a language model
+
+Worth being precise about this, since "AI detection" gets used loosely enough
+elsewhere that it stops meaning anything.
+
+Wazuh's own alerts are rule-based, signature and threshold matching, exactly
+what Wazuh always did, unchanged by anything zuumb adds on top.
+
+Two pieces zuumb adds are machine learning, not language models, small,
+deterministic given a fixed model, and running entirely on the machine with
+no API call and no per-alert cost. The auth-log anomaly detector fits a
+statistical baseline per host and flags a window that doesn't look like it.
+The second-opinion classifier is a simple linear model over word patterns in
+the alert text. The incident-similarity signal is also local and model-based,
+a small sentence-embedding model rather than a classifier, still not a
+language model, no free-form text, just a similarity number between two
+incidents.
+
+Exactly one piece in the whole pipeline is a large language model, the
+primary triage verdict, the one that reads an alert and writes a
+plain-language reason for its call. That's the part with real per-call cost
+and the part that can be turned off from the nav bar, at which point even
+that step falls back to the deterministic second-opinion classifier instead.
+
 ## How zuumb detects things on its own
 
 Wazuh already finds a lot by itself. zuumb now also runs two small engines of
@@ -390,6 +414,34 @@ that last number is worth a look, it can mean the model's gone stale, but
 nothing acts on it automatically. It's information for a person, same as
 everything else in zuumb.
 
+## Testing the second opinion against a deliberate attack
+
+A model that scores well on a clean eval set has never actually been tested
+against someone trying to fool it, which is a different question. So the
+second-opinion classifier got run through the Adversarial Robustness Toolbox,
+crafting the smallest possible nudge to every alert it currently calls
+malicious or suspicious correctly, aimed specifically at flipping the
+prediction to benign, the one flip an attacker actually wants.
+
+The finding is that the decision boundary has almost no room in it. A nudge
+of about a hundredth of a typical feature's own value is enough to flip every
+one of those alerts to benign. That's a small model over a small vocabulary,
+so a thin margin isn't shocking, but it hadn't actually been measured before.
+
+```bash
+python -m eval.adversarial
+```
+
+Worth being precise about what this does and doesn't show. It proves the
+model's decision boundary is fragile in its own numeric feature space. It
+doesn't hand over a rewritten alert that actually evades it, turning a
+perturbation vector into real words to add to a log line is a separate,
+harder problem nobody's attempted here. Full numbers and reasoning are in
+[eval/ADVERSARIAL.md](eval/ADVERSARIAL.md). This doesn't change anything
+about how the classifier is used today, it's advisory only, but it matters
+more for the one mode where this classifier becomes the primary verdict, see
+the next section.
+
 ## Turning AI detection off
 
 There's a switch in the top nav bar, labeled AI ON or AI OFF, that any
@@ -408,6 +460,28 @@ from so nobody mistakes it for the LLM's reasoning.
 
 Flip it back on and the next alert that comes in goes straight back through
 Claude, nothing needs a restart.
+
+## Finding related incidents that share nothing obvious
+
+Correlation groups alerts by shared host, IP, or user, which catches most
+real intrusions but misses a real shape too, the same campaign spread across
+machines with nothing literal in common between them. Nothing in the
+deterministic engine can see that, by construction, since it's only looking
+for a matching identifier.
+
+So there's now a second, entirely separate signal for it. A small local
+sentence-embedding model reads what each incident's alerts actually say,
+ignoring host, IP, and user on purpose, and flags a pair as worth a look when
+they read as the same kind of activity despite sharing no entity at all. It
+never runs on a pair that already shares an entity, since correlation or the
+chain stitcher already have that covered, and flagging it twice would just
+be noise.
+
+This never merges incidents, never changes severity, and never feeds back
+into correlation or chain stitching. It shows up as one line on the incident
+detail page, something like "might be the same campaign as incident #42,"
+and that's the whole extent of what it does. Same trust posture as the
+second opinion, a nudge for a human, nothing more.
 
 ## Attack chains — what they are and aren't
 
@@ -746,8 +820,18 @@ keeps `.env`, `*.db`, the landing page, and the planning docs out of the image.
 - **Phase 7** attack chain stitcher (`app/attack_chain/stitcher.py`) + `/chains` view — done.
 - **Phase 8** response layer (`app/response/playbooks.py`, propose-only, no execution) — done.
 - **Phase 9** feedback loop (`app/feedback/logger.py`, analyst override → few-shot in triage prompt) — done.
-- **Phase 10** eval harness (`eval/run_eval.py`) — done; baseline acc ~0.82, +few-shot ~0.94 against the original 34-alert labeled set ([eval/RESULTS.md](eval/RESULTS.md)). The labeled set has since grown to 56 alerts (see the Detection track notes below); those numbers haven't been rerun against it yet. Directional only: small self-labeled synthetic set, one annotator, default (non-zero) model temperature — not a certified benchmark.
+- **Phase 10** eval harness (`eval/run_eval.py`) — done; current run against the 104-alert labeled set: baseline acc 0.894, malicious recall 0.70, 0 malicious ever scored benign ([eval/RESULTS.md](eval/RESULTS.md), which also keeps the original 34-alert run for the record). Directional only: self-labeled synthetic set, one annotator, default (non-zero) model temperature — not a certified benchmark.
 - **Phase 12** live Wazuh ingestion (`app/ingestion/wazuh_client.py` poller + `app/pipeline.py`) — done against a live 4.9.2 stack.
 - **Phase 13** attack chains at scale — `CHAIN_MAX_ENTITY_SPREAD` knob, `scripts/chain_quality.py` diagnostic, container agent lab (`docker/agent/`, `docker-compose.agents.yml`); validation ongoing against real traffic.
 - **Phase 14** human-approved active response — allowlisted Wazuh AR dispatch (`app/response/active_response.py`), approve→dispatch flow with dry-run default + audit log (`app/response/approve.py`, `/audit`); verified live against a throwaway agent (real iptables DROP rule).
 - **Phase 15** public Docker distribution — multi-stage `Dockerfile`, `.github/workflows/publish.yml` (multi-arch → GHCR on `v*.*.*`), `docker-compose.yml` (pull) + `docker-compose.dev.yml` (build).
+
+Detection track — pluggable engines alongside Wazuh's own rule alerts, see
+[What's rule-based, what's learned, and what's a language model](#whats-rule-based-whats-learned-and-whats-a-language-model)
+above for how these fit together:
+- **D1** auth-log anomaly detector (`detectors/authlog/`, deterministic ML, no LLM) — done, runs continuously as its own container against the live Wazuh alerts index.
+- **D2** network beacon detector (`detectors/netflow/`, deterministic, no ML/LLM) — done, CLI only; no live flow-data source exists in this lab to schedule it against.
+- **D3** second-opinion classifier (`app/triage/second_opinion.py`, deterministic ML, no LLM) — done, advisory cross-check on the LLM's primary verdict.
+- **D4** retrain loop for D3 (`app/triage/retrain.py`) — done, weekly, gated so a retrain can never make the live model worse.
+- **D5** adversarial robustness check on D3 (`eval/adversarial.py`) — done; findings in [eval/ADVERSARIAL.md](eval/ADVERSARIAL.md).
+- **Incident similarity** (`app/correlation/similarity.py`, local sentence embedding, deterministic given a fixed model, no LLM) — done, advisory-only signal alongside the deterministic entity/time correlation, never replaces it.

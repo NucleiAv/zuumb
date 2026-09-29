@@ -13,6 +13,7 @@ from app import deadletter
 from app.attack_chain.stitcher import stitch
 from app.config import settings
 from app.correlation.engine import correlate
+from app.correlation.similarity import refresh as refresh_similarity
 from app.db.models import Alert, Verdict
 from app.db.session import get_session
 from app.ingestion.wazuh_client import poll_once
@@ -57,4 +58,5 @@ def run_pipeline_cycle(*, call=None, client=None) -> dict:
         if ingested or triaged:  # nothing new -> skip the derived-state rebuild
             correlate(session=s)
             stitch(session=s)
+            refresh_similarity(session=s)  # advisory only; never feeds back into correlate/stitch
     return {"ingested": ingested, "triaged": triaged}

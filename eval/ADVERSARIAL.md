@@ -14,28 +14,34 @@ Reproduce: `python -m eval.adversarial [--eps ...]`
 
 | eps (L-inf, TF-IDF units) | flipped to benign | flip rate | mean \|delta\| |
 |---|---|---|---|
-| 0.005 | 0 / 36 | 0.0 | 0.0018 |
-| 0.01 | 20 / 36 | 0.556 | 0.0036 |
-| 0.015 | 36 / 36 | 1.0 | 0.0055 |
-| 0.02 | 36 / 36 | 1.0 | 0.0073 |
-| 0.05 | 36 / 36 | 1.0 | 0.0182 |
-| 0.1 | 36 / 36 | 1.0 | 0.0362 |
+| 0.001 | 0 / 60 | 0.0 | 0.0004 |
+| 0.003 | 0 / 60 | 0.0 | 0.0013 |
+| 0.005 | 3 / 60 | 0.05 | 0.0022 |
+| 0.007 | 47 / 60 | 0.783 | 0.0030 |
+| 0.01 | 60 / 60 | 1.0 | 0.0043 |
+| 0.02 | 60 / 60 | 1.0 | 0.0087 |
+| 0.05 | 60 / 60 | 1.0 | 0.0217 |
+| 0.1 | 60 / 60 | 1.0 | 0.0434 |
 
 > **Directional, not a certified benchmark.** Same caveats as every other number
-> in this eval directory: 36 targets from a small, self-labeled synthetic set,
-> one model version, one attack algorithm. A re-run after the next retrain will
-> land near these figures, not reproduce them digit-for-digit.
+> in this eval directory: 60 targets from a self-labeled synthetic set, one
+> model version, one attack algorithm. A re-run after the next retrain will
+> land near these figures, not reproduce them digit-for-digit. (Re-run after
+> the eval set grew from 56 to 104 alerts — the margin got thinner, not
+> wider, full flip rate now hits at eps=0.01 instead of 0.015.)
 
 ## Reading the numbers
 
-**The decision boundary has almost no margin.** A perturbation of just 0.015 in
+**The decision boundary has almost no margin.** A perturbation of just 0.01 in
 L-infinity norm, moving each TF-IDF feature by about a hundredth of its own
 typical value, is enough to flip every correctly-flagged malicious or suspicious
 alert in the eval set to benign. That's not a large or exotic attack budget;
 it's tiny relative to the feature scale (the eval set's own TF-IDF values top
-out around 0.28). A linear model over a fairly small (56-alert) TF-IDF
-vocabulary was never going to have a wide margin, so this isn't shocking, but
-it hadn't actually been measured before now.
+out well under 1). A linear model over a fairly small TF-IDF vocabulary was
+never going to have a wide margin, so this isn't shocking, but it hadn't
+actually been measured before now, and growing the eval set didn't widen that
+margin, if anything the larger, more varied vocabulary made it slightly easier
+to find a flipping direction.
 
 **What this does and doesn't prove.** This measures fragility in the model's
 own *feature space* — it doesn't hand you a rewritten alert. Turning "move

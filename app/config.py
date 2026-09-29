@@ -51,6 +51,19 @@ class Settings(BaseSettings):
     model_dir: str = "data/models"
     retrain_interval_seconds: int = 7 * 24 * 3600
 
+    # Incident similarity (app/correlation/similarity.py): a local sentence
+    # embedding, advisory-only, never a replacement for the deterministic
+    # entity/time correlation above. Flags incident pairs whose alert content
+    # reads as the same activity despite sharing no host/IP/user. The model
+    # downloads once (~90MB) and caches under model_dir.
+    similarity_model: str = "sentence-transformers/all-MiniLM-L6-v2"
+    # A quick manual check against this model landed genuinely-related alerts
+    # (same rootcheck signature, different file) at ~0.78 and an unrelated
+    # pair at ~0.10 — 0.7 leaves comfortable room above the unrelated case
+    # while still catching that kind of match. Directional, not tuned against
+    # real traffic yet; adjust once real incidents give it something to learn from.
+    similarity_threshold: float = 0.7
+
     # Active response (Phase 14). SEPARATE least-privilege Manager API user — never
     # the ingestion credential. Its RBAC policy should allow only active-response:command.
     wazuh_ar_api_url: str = "https://localhost:55000"

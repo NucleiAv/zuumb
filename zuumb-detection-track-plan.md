@@ -314,6 +314,14 @@ different robustness question ART's mainstream attacks aren't built for.
 
 Checkpoint: `/ponytail-review`, `/ponytail-audit` on the final documentation.
 
+**Status**: done. README and docs.html both got a new "What's rule-based,
+what's learned, and what's a language model" section (item 2's explicit
+ask), plus sections for D5 and the incident-similarity signal that shipped
+alongside it. The marketing page (index.html) picked up two matching
+feature cards. `/ponytail-review` ran clean on the new code (twice, once
+per feature); `/ponytail-audit` scanned the detection-track code added
+across D1-D6, nothing new to cut beyond what the reviews already caught.
+
 ---
 
 ## 6. Ponytail and persona usage for this track

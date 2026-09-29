@@ -19,7 +19,7 @@ from datetime import datetime
 from sqlmodel import Session, delete, select
 
 from app.config import settings
-from app.correlation.engine import entities, techniques_for
+from app.correlation.engine import entities, signal_alerts, techniques_for
 from app.db.models import Alert, AttackChain, AttackChainIncident, Incident, IncidentAlert, Verdict
 from app.db.session import get_session, init_db
 
@@ -121,18 +121,6 @@ def stage_label_with_source(
 def _stage_rank(alerts: list[Alert], technique_by_alert: dict[int, str | None]) -> int:
     ranks = [tactic_rank(t) for t in _incident_tactics(alerts, technique_by_alert)]
     return min(ranks, default=_UNKNOWN_RANK)
-
-
-def _signal_alerts(alerts: list[Alert], verdict_by_alert: dict[int, str]) -> list[Alert]:
-    """Alerts with real attack signal — an "attack" rule group or a non-benign verdict.
-    These are what a chain links on; routine alerts that merged into the same incident
-    (a cron job, a login) must not contribute their entities. Falls back to all alerts."""
-    hot = [
-        a for a in alerts
-        if verdict_by_alert.get(a.id) in ("malicious", "suspicious")
-        or "attack" in json.loads(a.raw_json).get("rule", {}).get("groups", [])
-    ]
-    return hot or alerts
 
 
 # --- time proximity (item 1) ---------------------------------------------------
@@ -248,7 +236,7 @@ def stitch(session: Session | None = None) -> list[AttackChain]:
         # only medium/high incidents are chain candidates, and a chain links on
         # the entities of the *attack-signal* alerts in each (not a cron job).
         candidates = [i for i in incidents if i.severity in ("medium", "high")]
-        ent = {i.id: set().union(*(entities(a) for a in _signal_alerts(inc_alerts[i.id], verdict)), set())
+        ent = {i.id: set().union(*(entities(a) for a in signal_alerts(inc_alerts[i.id], verdict)), set())
                for i in candidates}
         rank = {i.id: _stage_rank(inc_alerts[i.id], technique) for i in candidates}
         spans = {i.id: _incident_span(inc_alerts[i.id]) for i in candidates}
@@ -315,7 +303,7 @@ def chain_quality(session: Session | None = None) -> list[dict]:
             inc_alerts[link.incident_id].append(alerts[link.alert_id])
 
         def sig_ents(inc_id: int) -> set[str]:
-            return set().union(*(entities(a) for a in _signal_alerts(inc_alerts[inc_id], verdict)), set())
+            return set().union(*(entities(a) for a in signal_alerts(inc_alerts[inc_id], verdict)), set())
 
         stages: dict[int, list[int]] = defaultdict(list)
         for link in session.exec(
