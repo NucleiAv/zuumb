@@ -293,6 +293,17 @@ worth confirming `docker compose up` actually includes it.**
 
 Checkpoint: `/ponytail-review`, document findings even if not immediately acted on, this becomes useful context for anyone (including a future you) evaluating the detector's real-world reliability.
 
+**Status**: done, targeting D4's second-opinion classifier (`eval/adversarial.py`,
+findings in `eval/ADVERSARIAL.md`). A targeted FastGradientMethod attack aimed
+at the `benign` class flips every correctly-flagged malicious/suspicious eval
+example at an L-infinity budget of just 0.015 in TF-IDF feature units, the
+decision boundary has almost no margin. This is a feature-space finding, not
+a proven text-editing exploit, and doesn't change how the classifier is used
+today (advisory-only, see D3), but is worth revisiting before ever trusting
+this classifier as more than a nudge. D1's ECOD anomaly detector wasn't
+covered, it's unsupervised with no decision boundary in the same sense, a
+different robustness question ART's mainstream attacks aren't built for.
+
 ### Phase D6 — Public documentation of the detection track
 
 *Persona: Product.*
