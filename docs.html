@@ -838,31 +838,36 @@ python -m app.triage.retrain --live</code></pre>
 
     <h2 id="evaluation">Evaluation</h2>
     <p>Triage quality is measured against a hand-labelled set of synthetic Wazuh alerts, currently
-    56 of them (20 benign, 18 suspicious, 18 malicious). The numbers below are from the original
-    34-alert version and have not been rerun against the larger set yet.</p>
+    104 of them (44 benign, 30 suspicious, 30 malicious), covering auth brute force including
+    low-and-slow, web exploitation, privilege escalation, lateral movement, data staging,
+    exfiltration, ransomware precursors, identity abuse, and a spread of routine benign noise.</p>
     <div class="note">
       <span class="tag">Read these as directional</span>
-      This is an early internal eval, not a certified benchmark: the set is small and synthetic,
+      This is an early internal eval, not a certified benchmark. The set is synthetic and
       self-labelled by one annotator, and the model runs at its default non-zero temperature, so
-      a re-run lands near these figures but not digit-for-digit. They show the feedback loop
-      measurably helps, not a validated accuracy claim.
+      a re-run lands near these figures but not digit-for-digit. A bigger set narrows the margin
+      of error on any one percentage without crossing into certified-benchmark territory.
     </div>
     <pre><code>python -m eval.run_eval [--few-shot]</code></pre>
     <table class="t">
       <thead><tr><th>Run</th><th>Accuracy</th><th>Malicious precision</th><th>Malicious recall</th><th>Malicious scored benign</th></tr></thead>
       <tbody>
-        <tr><td>baseline</td><td>0.82 (28 of 34)</td><td>1.00</td><td>0.70</td><td>0</td></tr>
-        <tr><td>with analyst few-shot</td><td>0.94 (32 of 34)</td><td>1.00</td><td>0.90</td><td>0</td></tr>
+        <tr><td>baseline</td><td>0.894 (93 of 104)</td><td>0.955</td><td>0.700</td><td>0</td></tr>
+        <tr><td>with analyst few-shot</td><td>0.885 (92 of 104)</td><td>0.913</td><td>0.700</td><td>0</td></tr>
       </tbody>
     </table>
     <ul class="body">
       <li>No malicious alert was ever called benign in either run. The safety-critical failure
-      mode is clean, and every malicious verdict the model gave was correct.</li>
-      <li>Baseline misses are all one severity level low, mostly the model correctly following
-      the prompt's rule that a malicious verdict needs observed success, not just an attempt.</li>
-      <li>One recorded analyst override, a successful login right after a brute-force burst, lifted
-      accuracy 12 points and malicious recall from 0.70 to 0.90 with no loss of precision. That is
-      the feedback loop paying off, measured rather than asserted.</li>
+      mode is clean on this larger, more varied set too.</li>
+      <li>Baseline misses are all one severity level low, the model under-calling an exploit
+      attempt or a credential-access technique as merely suspicious rather than malicious.</li>
+      <li>The few-shot row above is not actually exercising the feedback loop. It reads real
+      analyst corrections from the live database, and that database currently has none on
+      record, so the two rows differ only by the model's own sampling noise, not by the loop
+      doing anything. An earlier run, back when the set was 34 alerts, paired with one staged
+      correction and showed the loop's real effect, accuracy up 12 points and malicious recall
+      0.70 to 0.90. Full writeup and that earlier result are both in
+      <code>eval/RESULTS.md</code>.</li>
     </ul>
 
     <h2 id="compatibility">Compatibility</h2>
