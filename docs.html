@@ -280,9 +280,12 @@
       <div class="group-title">Features</div>
       <ul>
         <li><a href="#dashboard">The dashboard</a></li>
+        <li><a href="#detection-kinds">Rule-based, ML, or LLM</a></li>
         <li><a href="#detection-engines">Detection engines</a></li>
         <li><a href="#second-opinion">Second opinion and retrain</a></li>
+        <li><a href="#adversarial">Testing it against an attack</a></li>
         <li><a href="#ai-toggle">Turning AI detection off</a></li>
+        <li><a href="#incident-similarity">Finding related incidents</a></li>
         <li><a href="#attack-chains">Attack chains and tuning</a></li>
         <li><a href="#active-response">Automated mitigation</a></li>
         <li><a href="#evaluation">Evaluation</a></li>
@@ -595,6 +598,24 @@ curl -sk -H "Authorization: Bearer $TOKEN" "https://localhost:55000/agents/summa
     <p>Charts are exportable to CSV from the panel menu. The time series and the hour-by-weekday
     heatmap bucket in the viewer's own timezone.</p>
 
+    <h2 id="detection-kinds">Rule-based, ML, or LLM</h2>
+    <p>Worth being precise here, since "AI detection" gets used loosely enough elsewhere that it
+    stops meaning much. Wazuh's own alerts are rule-based, signature and threshold matching, exactly
+    what Wazuh always did, nothing zuumb adds changes that.</p>
+    <table class="t">
+      <thead><tr><th>Piece</th><th>Kind</th><th>Cost per alert</th></tr></thead>
+      <tbody>
+        <tr><td>Wazuh's own alerts</td><td>Rule-based</td><td>None, unchanged from Wazuh</td></tr>
+        <tr><td>Auth-log anomaly detector</td><td>Machine learning, local, deterministic</td><td>None, no API call</td></tr>
+        <tr><td>Second-opinion classifier</td><td>Machine learning, local, deterministic</td><td>None, no API call</td></tr>
+        <tr><td>Incident similarity</td><td>Machine learning, local, deterministic</td><td>None, no API call</td></tr>
+        <tr><td>Primary triage verdict</td><td>Large language model</td><td>One Claude call per alert, can be turned off</td></tr>
+      </tbody>
+    </table>
+    <p>Exactly one piece in the whole pipeline is a language model, the primary triage verdict.
+    Everything else that isn't a plain rule is a small, local, deterministic model, the same input
+    twice always returns the same output, no free-form generation, no per-call API cost.</p>
+
     <h2 id="detection-engines">Detection engines</h2>
     <p>Wazuh alerts are the main feed, but zuumb also runs a couple of its own detectors that look
     for things a static rule set tends to miss. Both write alerts through the same path Wazuh
@@ -650,6 +671,27 @@ curl -sk -H "Authorization: Bearer $TOKEN" "https://localhost:55000/agents/summa
     <pre><code>python -m app.triage.retrain
 python -m app.triage.retrain --live</code></pre>
 
+    <h2 id="adversarial">Testing it against an attack</h2>
+    <p>A model that scores well on a clean eval set has never actually been tested against someone
+    trying to fool it, a different question. The second-opinion classifier was run through the
+    Adversarial Robustness Toolbox, crafting the smallest possible nudge to every alert it
+    currently calls malicious or suspicious correctly, aimed specifically at flipping the
+    prediction to benign, the one flip an attacker actually wants.</p>
+    <div class="note">
+      <span class="tag">The finding</span>
+      The decision boundary has almost no room in it. A nudge of about a hundredth of a typical
+      feature's own value is enough to flip every correctly flagged alert to benign. That's a
+      small model over a small vocabulary, so a thin margin isn't shocking, but it hadn't actually
+      been measured before. This proves the boundary is fragile in the model's own numeric feature
+      space, it does not hand over a rewritten alert that actually evades it in practice, turning
+      that perturbation into real words to add to a log line is a separate, harder problem nobody
+      has attempted here.
+    </div>
+    <pre><code>python -m eval.adversarial</code></pre>
+    <p>Full numbers and reasoning live in the repository's <code>eval/ADVERSARIAL.md</code>. This
+    doesn't change how the classifier is used today, it stays advisory only, but it matters more
+    for the one mode where this classifier becomes the primary verdict, the toggle just below.</p>
+
     <h2 id="ai-toggle">Turning AI detection off</h2>
     <p>The nav bar carries a switch, AI ON or AI OFF, next to the theme toggle. Any logged in
     analyst can click it, and it applies to the whole deployment at once rather than to just the
@@ -662,6 +704,22 @@ python -m app.triage.retrain --live</code></pre>
       label and a confidence number. The alert detail page marks that verdict as coming from the
       local classifier so nobody mistakes it for Claude's reasoning. Flipping it back on picks up
       from the very next alert, nothing needs a restart.
+    </div>
+
+    <h2 id="incident-similarity">Finding related incidents</h2>
+    <p>Correlation groups alerts by a shared host, IP, or user, which catches most real intrusions
+    but misses a real shape too, the same campaign spread across machines with nothing literal in
+    common between them. Nothing in the deterministic engine can see that, by construction, since
+    it only looks for a matching identifier.</p>
+    <div class="note">
+      <span class="tag">Advisory only, same as the second opinion</span>
+      A small local sentence-embedding model reads what each incident's alerts actually say,
+      ignoring host, IP, and user on purpose, and flags a pair as worth a look when they read as
+      the same kind of activity despite sharing no entity at all. It never runs on a pair that
+      already shares an entity, correlation or the chain stitcher already have that covered, and
+      flagging it twice would just be noise. It never merges incidents, never changes severity, and
+      never feeds back into correlation or chain stitching, it shows up as one line on the incident
+      detail page and that's the whole extent of what it does.
     </div>
 
     <h2 id="attack-chains">Attack chains and tuning</h2>
