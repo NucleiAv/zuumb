@@ -154,6 +154,21 @@ class SystemSetting(SQLModel, table=True):
     updated_at: datetime = Field(default_factory=_now)
 
 
+class IncidentSimilarity(SQLModel, table=True):
+    """Advisory-only: two incidents whose alert content embeds as semantically
+    similar despite sharing no host/IP/user, so the deterministic correlation
+    in app/correlation/engine.py wouldn't have grouped them and the chain
+    stitcher wouldn't have linked them either (see
+    app/correlation/similarity.py). Rebuilt every pipeline cycle, same
+    delete-and-recreate pattern as AttackChain. Never read by correlate() or
+    stitch() — this is surfaced to an analyst, nothing more."""
+    id: int | None = Field(default=None, primary_key=True)
+    incident_a_id: int = Field(foreign_key="incident.id", index=True)
+    incident_b_id: int = Field(foreign_key="incident.id", index=True)
+    score: float
+    created_at: datetime = Field(default_factory=_now)
+
+
 class ModelVersion(SQLModel, table=True):
     """D4: one row per retrain run of a locally-trained classifier (currently
     just the second-opinion model, `kind="second_opinion"`). At most one row per

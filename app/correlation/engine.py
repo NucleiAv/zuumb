@@ -5,6 +5,7 @@ thin DB wrapper that persists the result.
 """
 from __future__ import annotations
 
+import json
 from collections import Counter, defaultdict
 from datetime import timedelta
 
@@ -21,6 +22,21 @@ def entities(a: Alert) -> set[str]:
     """The host/IP/user identifiers an alert touches."""
     pairs = (("ip", a.src_ip), ("ip", a.dst_ip), ("host", a.agent_name), ("user", a.user))
     return {f"{kind}:{val}" for kind, val in pairs if val}
+
+
+def signal_alerts(alerts: list[Alert], verdict_by_alert: dict[int, str]) -> list[Alert]:
+    """Alerts with real attack signal — a non-benign verdict or an "attack" rule
+    group. Routine alerts that merged into the same incident (a cron job, a
+    login) must not drive a decision built on top of it. Falls back to all
+    alerts when none stand out. Shared by the chain stitcher, response
+    playbooks, and incident similarity — all three need the same "what's the
+    real signal in this incident" answer."""
+    hot = [
+        a for a in alerts
+        if verdict_by_alert.get(a.id) in ("malicious", "suspicious")
+        or "attack" in json.loads(a.raw_json).get("rule", {}).get("groups", [])
+    ]
+    return hot or alerts
 
 
 def techniques_for(a: Alert, guess: str | None = None) -> set[str]:

@@ -20,3 +20,5 @@ drain3  # Detection track D1: auth-log template mining (detectors/authlog/parse.
 pyod  # Detection track D1: ECOD anomaly scoring (detectors/authlog/model.py); pulls scikit-learn
 
 adversarial-robustness-toolbox==1.20.1  # Detection track D5: eval/adversarial.py, evasion check on D3/D4
+
+fastembed==0.8.1  # Incident similarity (app/correlation/similarity.py): local ONNX MiniLM embedding, no torch

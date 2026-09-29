@@ -11,6 +11,7 @@ from sqlmodel import select
 
 from app.attack_chain.stitcher import TACTIC_ORDER, _incident_tactics
 from app.correlation.engine import _analyst_verdicts, entities, incident_severity
+from app.correlation.similarity import for_incident as similar_incidents
 from app.config import settings
 from app.db.models import (
     Alert,
@@ -286,6 +287,7 @@ def incident_detail(request: Request, incident_id: int):
             .where(ResponseActionLog.incident_id == incident_id)
             .order_by(ResponseActionLog.created_at.desc())
         ).all()
+        similar = similar_incidents(s, incident_id)  # advisory only; see app/correlation/similarity.py
     rows = []
     for a in alerts:
         v = verdicts.get(a.id)
@@ -296,6 +298,7 @@ def incident_detail(request: Request, incident_id: int):
         "alerts_cap": _ALERTS_CAP,
         "dry_run": settings.response_dry_run,
         "confirm_task": request.query_params.get("confirm"),
+        "similar": similar,
     })
 
 

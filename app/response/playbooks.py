@@ -12,6 +12,7 @@ import json
 
 from sqlmodel import Session, select
 
+from app.correlation.engine import signal_alerts
 from app.db.models import Alert, IncidentAlert, Task, Verdict
 from app.db.session import get_session, init_db
 
@@ -46,16 +47,6 @@ _FALLBACK = {"type": "investigation", "priority": "medium",
              "title": "Triage the alert, confirm scope, and document findings"}
 
 
-def _signal_alerts(alerts: list[Alert], verdict_by_alert: dict[int, str]) -> list[Alert]:
-    """The alerts that carry an attack signal (non-benign verdict or an `attack`
-    rule group). Falls back to all alerts when none stand out."""
-    return [
-        a for a in alerts
-        if verdict_by_alert.get(a.id) in ("malicious", "suspicious")
-        or "attack" in json.loads(a.raw_json).get("rule", {}).get("groups", [])
-    ] or alerts
-
-
 def _resolve_action(need: str, signal: list[Alert]) -> tuple[str, str] | None:
     """(target, agent_id) for one action, both taken from a SINGLE alert so the
     target is never paired with an agent that never observed it. `need` is
@@ -86,7 +77,7 @@ def suggest(incident_id: int, alerts: list[Alert], technique_by_alert: dict[int,
             verdict_by_alert: dict[int, str] | None = None) -> list[Task]:
     """Proposed (unsaved) Task rows for one incident. Pure — no DB, no side effects."""
     techniques, groups = _signals(alerts, technique_by_alert)
-    signal = _signal_alerts(alerts, verdict_by_alert or {})
+    signal = signal_alerts(alerts, verdict_by_alert or {})
     seen: set[str] = set()
     tasks: list[Task] = []
     for pb in PLAYBOOKS:
