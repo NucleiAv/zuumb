@@ -208,7 +208,7 @@ def login_help(request: Request):
     return _templates.TemplateResponse(request, "login_help.html", {})
 
 
-def _current_user(request: Request) -> str:
+def current_user(request: Request) -> str:
     sess = read_session(request)
     return sess["u"] if sess else settings.dashboard_user
 
@@ -220,7 +220,7 @@ def settings_page(request: Request, ok: int = 0, bad: str = ""):
     with get_session() as s:
         custom = get_credential(s) is not None
     return _templates.TemplateResponse(request, "settings.html",
-                                       {"custom": custom, "user": _current_user(request),
+                                       {"custom": custom, "user": current_user(request),
                                         "ok": ok, "bad": bad})
 
 
@@ -234,7 +234,7 @@ def settings_credentials(
 ):
     if auth_enabled() and read_session(request) is None:
         return RedirectResponse("/login?next=/settings", status_code=303)
-    if not check_login(_current_user(request), current_password):
+    if not check_login(current_user(request), current_password):
         return RedirectResponse("/settings?bad=current", status_code=303)
     if not new_username.strip() or len(new_password) < 8:
         return RedirectResponse("/settings?bad=weak", status_code=303)

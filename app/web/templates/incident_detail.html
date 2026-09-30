@@ -8,13 +8,55 @@
   status {{ incident.status }} &middot;
   created <time datetime="{{ incident.created_at|isoz }}">{{ incident.created_at|isoz }}</time>
 </p>
+{% set linked_ids = linked|map(attribute='incident.id')|list %}
 {% if similar %}
 <div class="banner">
   <b>Might be the same campaign as {{ similar|length }} other incident{{ '' if similar|length == 1 else 's' }}.</b>
   These share no host, IP, or user with this one, so the correlation engine and chain stitcher
-  never linked them, but a local embedding model reads their alerts as the same kind of activity:
-  {% for s in similar %}<a href="/incidents/{{ s.incident.id }}">#{{ s.incident.id }}</a> ({{ '%.2f'|format(s.score) }}){{ ", " if not loop.last }}{% endfor %}.
+  never linked them, but a local embedding model reads their alerts as the same kind of activity.
   Advisory only, worth a glance, not a confirmed link.
+  <ul class="similar-list">
+  {% for s in similar %}
+    <li>
+      <a href="/incidents/{{ s.incident.id }}">#{{ s.incident.id }}</a> ({{ '%.2f'|format(s.score) }})
+      {% if s.incident.id in linked_ids %}
+      <span class="tag-human">confirmed related</span>
+      {% else %}
+      <details class="override">
+        <summary>confirm this is related</summary>
+        <form method="post" action="/incidents/{{ incident.id }}/manual-links">
+          {{ csrf_field(request) }}
+          <input type="hidden" name="other_incident_id" value="{{ s.incident.id }}">
+          <input type="text" name="note" placeholder="why (optional)" maxlength="200">
+          <button type="submit">confirm</button>
+        </form>
+      </details>
+      {% endif %}
+    </li>
+  {% endfor %}
+  </ul>
+</div>
+{% endif %}
+
+{% if linked %}
+<div class="manual-links">
+  <h3 class="mini">Analyst-linked incidents <span class="tag-human">human-confirmed</span></h3>
+  <p class="subtle">A person looked at these and confirmed they're related — not a system-generated
+  chain or similarity hint, and it changes nothing about correlation, severity, or attack chains.</p>
+  <ul>
+  {% for l in linked %}
+    <li>
+      <a href="/incidents/{{ l.incident.id }}">#{{ l.incident.id }}</a>
+      <span class="muted">— confirmed by {{ l.link.linked_by }} on
+      <time datetime="{{ l.link.linked_at|isoz }}">{{ l.link.linked_at|isoz }}</time></span>
+      {% if l.link.note %}<div class="muted link-note">"{{ l.link.note }}"</div>{% endif %}
+      <form method="post" action="/incidents/{{ incident.id }}/manual-links/{{ l.link.id }}/unlink" style="display:inline">
+        {{ csrf_field(request) }}
+        <button type="submit" class="link-btn">unlink</button>
+      </form>
+    </li>
+  {% endfor %}
+  </ul>
 </div>
 {% endif %}
 <table>

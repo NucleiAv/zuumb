@@ -491,6 +491,24 @@ detail page, something like "might be the same campaign as incident #42,"
 and that's the whole extent of what it does. Same trust posture as the
 second opinion, a nudge for a human, nothing more.
 
+### Confirming a link by hand
+
+The similarity hint is a suggestion, so the incident detail page also lets an
+analyst turn one into an explicit record: a "confirm this is related" action
+on the banner writes who confirmed it, when, and an optional note (e.g.
+"confirmed via manual log review, same attacker IP range not captured in our
+entity fields").
+
+This is a **third, separate layer** — not the deterministic correlation, not
+the embedding similarity, and not an attack chain. It never feeds into any of
+them: no change to severity, no `AttackChain` created or modified, and
+confirming a pair that was never flagged similar in the first place works
+the same way. It's shown in its own "Analyst-linked incidents" section,
+labeled human-confirmed and styled distinctly from both the advisory banner
+and a chain view, so it can never read as something zuumb detected on its
+own. Confirming the same pair twice is a no-op, not a duplicate row, and an
+analyst can unlink it later — a past judgment call isn't permanent.
+
 ## Attack chains — what they are and aren't
 
 An attack chain is a **grouping hypothesis**, not a proven forensic timeline or
@@ -843,3 +861,4 @@ above for how these fit together:
 - **D4** retrain loop for D3 (`app/triage/retrain.py`) — done, weekly, gated so a retrain can never make the live model worse.
 - **D5** adversarial robustness check on D3 (`eval/adversarial.py`) — done; findings in [eval/ADVERSARIAL.md](eval/ADVERSARIAL.md).
 - **Incident similarity** (`app/correlation/similarity.py`, local sentence embedding, deterministic given a fixed model, no LLM) — done, advisory-only signal alongside the deterministic entity/time correlation, never replaces it.
+- **Manual incident linking** (`app/correlation/manual_link.py`) — done, a human-confirmed record separate from correlation, similarity, and attack chains; drives nothing downstream (guarded by a test asserting `stitcher.py`/`engine.py` never reference it).

@@ -10,6 +10,7 @@ from fastapi.templating import Jinja2Templates
 from sqlmodel import select
 
 from app.attack_chain.stitcher import TACTIC_ORDER, _incident_tactics
+from app.correlation import manual_link
 from app.correlation.engine import _analyst_verdicts, entities, incident_severity
 from app.correlation.similarity import for_incident as similar_incidents
 from app.config import settings
@@ -28,7 +29,7 @@ from app.db.session import get_session
 from app.feedback.logger import record_override
 from app.redact import redact
 from app.triage.second_opinion import escalates as so_escalates
-from app.web.auth import ai_status, auth_enabled, csrf_field, read_session, require_csrf
+from app.web.auth import ai_status, auth_enabled, csrf_field, current_user, read_session, require_csrf
 from app.response.approve import ConfirmRequired, RateLimited, approve_task
 from app.response.playbooks import propose_for_incident
 from app.web.stats import DAYS, compute_stats
@@ -288,6 +289,7 @@ def incident_detail(request: Request, incident_id: int):
             .order_by(ResponseActionLog.created_at.desc())
         ).all()
         similar = similar_incidents(s, incident_id)  # advisory only; see app/correlation/similarity.py
+        linked = manual_link.for_incident(s, incident_id)  # human-confirmed only; drives nothing
     rows = []
     for a in alerts:
         v = verdicts.get(a.id)
@@ -299,7 +301,36 @@ def incident_detail(request: Request, incident_id: int):
         "dry_run": settings.response_dry_run,
         "confirm_task": request.query_params.get("confirm"),
         "similar": similar,
+        "linked": linked,
     })
+
+
+@router.post("/incidents/{incident_id}/manual-links")
+def confirm_manual_link(
+    request: Request, incident_id: int, other_incident_id: int = Form(...),
+    note: str = Form(""), csrf_ok: None = Depends(require_csrf),
+):
+    """Record a human-confirmed link from the similarity banner. Separate from
+    both the deterministic correlation and the advisory similarity signal —
+    see app/correlation/manual_link.py for what this does and doesn't touch."""
+    if other_incident_id == incident_id:
+        raise HTTPException(status_code=400, detail="an incident can't be linked to itself")
+    with get_session() as s:
+        if s.get(Incident, incident_id) is None or s.get(Incident, other_incident_id) is None:
+            raise HTTPException(status_code=404, detail="incident not found")
+        manual_link.confirm(s, incident_id, other_incident_id, current_user(request), note.strip())
+    return RedirectResponse(f"/incidents/{incident_id}", status_code=303)
+
+
+@router.post("/incidents/{incident_id}/manual-links/{link_id}/unlink")
+def remove_manual_link(
+    incident_id: int, link_id: int, csrf_ok: None = Depends(require_csrf),
+):
+    """Undo a confirmed link. An analyst's past judgment call isn't permanent."""
+    with get_session() as s:
+        if not manual_link.unlink(s, link_id):
+            raise HTTPException(status_code=404, detail="manual link not found")
+    return RedirectResponse(f"/incidents/{incident_id}", status_code=303)
 
 
 @router.get("/audit", response_class=HTMLResponse)

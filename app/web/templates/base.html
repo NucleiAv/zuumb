@@ -118,6 +118,22 @@
   details.override select, details.override input, details.override button { font-size: 11px; }
   .banner { font-size: 12px; padding: .45rem .7rem; margin: .5rem 0 .6rem; border-radius: 5px;
     border: 1px solid var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
+  .similar-list { list-style: none; margin: .4rem 0 0; padding: 0; }
+  .similar-list li { margin: .3rem 0; }
+  .similar-list details.override { display: inline-block; margin-left: .4rem; }
+
+  /* Analyst-linked incidents: a human judgment call, deliberately NOT styled like
+     the system-generated .banner (blue tint) or a chain's severity-colored
+     stage-node — plain card, outlined tag, no accent color, so it can never
+     be mistaken for an auto-detected artifact. */
+  .manual-links { border: 1px dashed var(--border); border-radius: 5px;
+    padding: .5rem .7rem; margin: .5rem 0 .6rem; background: var(--card); }
+  .manual-links ul { list-style: none; margin: .3rem 0 0; padding: 0; }
+  .manual-links li { margin: .4rem 0; font-size: 12px; }
+  .link-note { font-style: italic; margin: .1rem 0 .1rem 1rem; }
+  .tag-human { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .03em;
+    padding: .05rem .4rem; border-radius: 3px; margin-left: .3rem;
+    color: var(--muted); background: transparent; border: 1px solid var(--border); }
   .filterbar { font-size: 12px; margin: 0 0 .75rem; }
   .pager { display: flex; gap: 1rem; align-items: center; font-size: 12px; margin: .6rem 0; }
   .filterbar code { margin-right: .4rem; }

@@ -169,6 +169,22 @@ class IncidentSimilarity(SQLModel, table=True):
     created_at: datetime = Field(default_factory=_now)
 
 
+class ManualIncidentLink(SQLModel, table=True):
+    """A human-confirmed link between two incidents — distinct from both the
+    deterministic correlation in app/correlation/engine.py and the advisory
+    embedding similarity in app/correlation/similarity.py. Never read by
+    correlate(), stitch(), or incident_severity() (see
+    tests/test_manual_link.py for the guard asserting that stays true).
+    Recorded from the incident-detail similarity banner, but nothing requires
+    the pair to have been flagged similar first."""
+    id: int | None = Field(default=None, primary_key=True)
+    incident_a_id: int = Field(foreign_key="incident.id", index=True)
+    incident_b_id: int = Field(foreign_key="incident.id", index=True)
+    linked_by: str
+    note: str = ""
+    linked_at: datetime = Field(default_factory=_now)
+
+
 class ModelVersion(SQLModel, table=True):
     """D4: one row per retrain run of a locally-trained classifier (currently
     just the second-opinion model, `kind="second_opinion"`). At most one row per

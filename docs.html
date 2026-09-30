@@ -722,6 +722,22 @@ python -m app.triage.retrain --live</code></pre>
       detail page and that's the whole extent of what it does.
     </div>
 
+    <h3>Confirming a link by hand</h3>
+    <p>The similarity hint is a suggestion, not a conclusion, so an analyst can turn one into an
+    explicit record: a "confirm this is related" action on the banner writes a row noting who
+    confirmed it, when, and an optional note, e.g. "confirmed via manual log review, same
+    attacker IP range not captured in our entity fields."</p>
+    <div class="note">
+      <span class="tag">A third, separate layer — human judgment, not a system artifact</span>
+      This is not the deterministic correlation, not the embedding similarity, and not an attack
+      chain. It never feeds into any of them; it does not touch severity, does not create or modify
+      an <code>AttackChain</code>, and confirming a pair that was never flagged similar in the first
+      place works the same way. It shows up on the incident detail page in its own section, labeled
+      "human-confirmed" and styled distinctly from both the advisory banner and a chain view, so it
+      can never be mistaken for something zuumb detected on its own. Confirming twice is a no-op,
+      not a duplicate, and an analyst can unlink it later, a past judgment call isn't permanent.
+    </div>
+
     <h2 id="attack-chains">Attack chains and tuning</h2>
     <div class="note">
       <span class="tag">What a chain is, and isn't</span>

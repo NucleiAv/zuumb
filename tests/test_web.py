@@ -408,3 +408,69 @@ def test_empty_incidents_list_ok():
     r = client.get("/")
     assert r.status_code == 200
     assert "No incidents match" in r.text
+
+
+def _seed_named(host, ip, rule_description, severity="high") -> int:
+    with get_session() as s:
+        a = Alert(wazuh_alert_id=f"{host}-{ip}", timestamp=datetime(2026, 1, 1), rule_id="1",
+                  rule_description=rule_description, agent_name=host, src_ip=ip,
+                  raw_json='{"rule":{"groups":["attack"]}}')
+        s.add(a); s.commit(); s.refresh(a)
+        s.add(Verdict(alert_id=a.id, verdict="malicious", confidence=0.9,
+                      reasoning_text="x", model_version="t"))
+        inc = Incident(title=host, severity=severity)
+        s.add(inc); s.commit(); s.refresh(inc)
+        s.add(IncidentAlert(incident_id=inc.id, alert_id=a.id))
+        s.commit()
+        return inc.id
+
+
+def test_manual_link_end_to_end_from_the_similarity_banner(monkeypatch):
+    """The full flow the feature is for: two incidents share no entity, the
+    advisory similarity layer flags them, an analyst confirms the link from
+    the banner, it shows up clearly labeled as human-confirmed, and can be
+    undone."""
+    from app.correlation import similarity as sim
+    from tests.conftest import FakeEmbedding
+    monkeypatch.setattr(sim, "_model", lambda: FakeEmbedding())
+    monkeypatch.setattr(sim.settings, "similarity_threshold", 0.5)
+
+    a = _seed_named("host-a", "203.0.113.1", "web shell script uploaded to web root")
+    b = _seed_named("host-b", "203.0.113.2", "web shell script uploaded to web root")
+    sim.refresh()
+
+    page = client.get(f"/incidents/{a}").text
+    assert "Might be the same campaign" in page
+    assert f'action="/incidents/{a}/manual-links"' in page
+    assert f'value="{b}"' in page
+
+    r = client.post(f"/incidents/{a}/manual-links",
+                    data={"other_incident_id": b, "note": "same attacker IP range in raw logs"},
+                    follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == f"/incidents/{a}"
+
+    page = client.get(f"/incidents/{a}").text
+    assert '<h3 class="mini">Analyst-linked incidents' in page
+    assert "human-confirmed" in page
+    assert "same attacker IP range in raw logs" in page
+    assert f'href="/incidents/{b}"' in page
+    assert "confirmed related" in page  # banner row now shows it's already confirmed
+
+    with get_session() as s:
+        from app.db.models import ManualIncidentLink
+        link = s.exec(select(ManualIncidentLink)).one()
+        assert link.incident_a_id == a and link.incident_b_id == b
+
+    r = client.post(f"/incidents/{a}/manual-links/{link.id}/unlink", follow_redirects=False)
+    assert r.status_code == 303
+    page = client.get(f"/incidents/{a}").text
+    assert '<h3 class="mini">Analyst-linked incidents' not in page
+
+
+def test_manual_link_rejects_self_link_and_missing_incident():
+    a = _seed_named("host-x", "203.0.113.9", "port scan detected")
+    assert client.post(f"/incidents/{a}/manual-links",
+                       data={"other_incident_id": a}).status_code == 400
+    assert client.post(f"/incidents/{a}/manual-links",
+                       data={"other_incident_id": 999999}).status_code == 404
+    assert client.post(f"/incidents/{a}/manual-links/999999/unlink").status_code == 404
