@@ -4,25 +4,12 @@ ONNX download, same principle as the LLM's `call=` injection: fast, offline,
 still exercising the real cosine-similarity code path."""
 from datetime import datetime
 
-import numpy as np
 from sqlmodel import select
 
 from app.correlation import similarity as sim
 from app.db.models import Alert, Incident, IncidentAlert, IncidentSimilarity, Verdict
 from app.db.session import get_session
-
-
-class _FakeEmbedding:
-    """Bag-of-words indicator vector over the batch's own vocabulary — text
-    that shares words scores similar, text that shares nothing scores ~0."""
-    def embed(self, texts):
-        vocab = sorted({w for t in texts for w in t.lower().split()})
-        idx = {w: i for i, w in enumerate(vocab)}
-        vecs = np.zeros((len(texts), max(len(vocab), 1)))
-        for row, t in zip(vecs, texts):
-            for w in t.lower().split():
-                row[idx[w]] = 1.0
-        return list(vecs)
+from tests.conftest import FakeEmbedding as _FakeEmbedding
 
 
 def _seed_incident(host, ip, rule_description, severity="high", n=1):
