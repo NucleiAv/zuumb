@@ -8,6 +8,12 @@ attack chain, response-task proposals, analyst feedback loop, dashboard.
 
 Built as the next layer on top of prior Wazuh detection-rule work.
 
+Correlation itself is two layers, not one: a deterministic entity/time engine
+that's always on and actually forms incidents, plus a separate, advisory local
+embedding model that flags incidents which read as the same campaign even
+with no shared host, IP, or user — surfaced as a hint, never authoritative.
+See [Finding related incidents that share nothing obvious](#finding-related-incidents-that-share-nothing-obvious).
+
 ## Demo
 
 A minute on the real dashboard, the real reasoning behind a verdict, a real
@@ -555,6 +561,71 @@ Knobs (all `.env`-overridable):
 | `CHAIN_MAX_ENTITY_SPREAD` | `4` | lower if a busy shared host keeps stitching unrelated incidents together |
 | `CHAIN_STRONG_LINK_HOURS` | `24` | stages linking within this gap keep full confidence |
 | `CHAIN_MAX_LINK_HOURS` | `72` | beyond this gap, incidents don't link into a chain at all |
+
+## Five questions for any "AI-powered" claim
+
+A useful gut-check for any product that says "AI-powered," including this one:
+ask these five questions, and if the answers are vague, that's the actual
+finding. Here's zuumb's, answered plainly.
+
+**1. What type of AI?** Four different things, not one. Wazuh's own alerts are
+rule-based, signature matching, unchanged. The auth-log anomaly detector (D1)
+is classical unsupervised ML, PyOD's ECOD scoring windows against a learned
+per-host baseline. The network-beacon detector (D2) isn't ML at all, it's a
+deterministic statistics check, coefficient of variation on connection timing,
+worth saying plainly rather than dressing it up. The second-opinion classifier
+(D3) is classical supervised ML, TF-IDF plus logistic regression, trained on
+real analyst corrections. The incident-similarity signal is a small local
+deep-learning model, a sentence embedding, still not a language model. And
+exactly one piece is a large language model: Claude writes the primary triage
+verdict and its reasoning. A nav-bar toggle turns that one piece off;
+everything else keeps running.
+
+**2. What metric, on what data, vs. what baseline?** Triage accuracy,
+currently about 89%, against a 104-alert hand-labeled set, is the headline
+number, and it comes with real limits worth stating rather than burying: a
+small, self-labeled, synthetic set, not independently sized or class-balanced
+against a real deployment's base rate, and there's no published comparison
+against a simpler baseline like keyword matching. D3's own retrain loop holds
+a higher bar — every retrain is scored against a fixed held-out split and only
+promoted if it actually beats the live model, never just for being newer. D1
+and D2 have no accuracy number at all; they're unsupervised and heuristic,
+with no labeled ground truth to score them against. That's a known gap, not
+an oversight.
+
+**3. Who evaluated it?** One person, the one who built it. Every number in
+this repo is self-reported and run internally — no independent lab, no peer
+review, no external red team. This is a portfolio and demo project, not a
+vendor claim, but the honest answer to this question doesn't change because
+of that.
+
+**4. What are the failure modes?** Specific ones, not a hand-wave. Turning
+the LLM off quietly downgrades triage quality to the local classifier, a real
+tradeoff, not a free lunch. The second-opinion classifier has a genuinely
+thin margin around its decision boundary — a small adversarial test found a
+crafted alert can flip it ([eval/ADVERSARIAL.md](eval/ADVERSARIAL.md)). The
+auth-log detector needs a clean baseline period; a host that's noisy from day
+one has nothing normal to compare against. The beacon detector only catches
+near-perfectly-regular timing by design — a beacon that jitters its interval
+on purpose slips through, an accepted blind spot of that technique in
+general, not a bug in this one. The correlation engine only looks at shared
+host, IP, or user — a campaign spread across machines with nothing in common
+on paper is invisible to it unless the advisory similarity layer happens to
+flag it. An attack chain is a grouping hypothesis, not causation — two
+unrelated things on the same busy jump box can get stitched together. And a
+human-confirmed manual link is a person's opinion, recorded, not verified
+against evidence — that's the whole point of it, but it means it can be
+exactly as wrong as any note in a ticket can be.
+
+**5. What changes between test and deployment?** A lot. The eval set is a
+fixed synthetic snapshot; live traffic has a different alert mix, volume, and
+base rate, and the POC path has never run against a real production feed at
+scale. D3's retrain loop tracks a drift score — how similar recent alert text
+still is to what it trained on — precisely because this is expected to move,
+not a one-time concern. The correlation window and chain-spread constants
+above are hand-tuned defaults calibrated against synthetic data, not measured
+live traffic. And the live-Wazuh polling path is newer and far less exercised
+than the synthetic-replay path everything else here is tested against.
 
 ## Automated mitigation (active response, Phase 14)
 
