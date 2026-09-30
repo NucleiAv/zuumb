@@ -8,6 +8,14 @@ attack chain, response-task proposals, analyst feedback loop, dashboard.
 
 Built as the next layer on top of prior Wazuh detection-rule work.
 
+## Demo
+
+A minute on the real dashboard, the real reasoning behind a verdict, a real
+attack chain, and exactly where a language model is and isn't involved.
+Click the image to play the video.
+
+[![Watch the zuumb demo](assets/zuumb-demo.jpg)](assets/zuumb-demo.mp4)
+
 ## Supported versions
 
 | Wazuh | Status |
