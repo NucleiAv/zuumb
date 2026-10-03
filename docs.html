@@ -384,6 +384,73 @@
     the deployment is used. The effect is measured, not assumed. See
     <a href="#evaluation">Evaluation</a>.</p>
 
+    <h3 id="diagrams">The system in three diagrams</h3>
+    <p>Three views of the same system, drawn from the code. Select an image for the interactive
+    version, where every box carries a <code>SRC</code> badge linking to the exact source lines it
+    was drawn from, pinned to commit
+    <a href="https://github.com/NucleiAv/zuumb/commit/65b1ecb"><code>65b1ecb</code></a>.</p>
+
+    <figure class="shot">
+      <a href="/assets/diagrams/zuumb-system-architecture.html">
+        <img class="shot-light" src="/assets/diagrams/zuumb-system-architecture-light.png" width="2048" height="1320"
+          loading="lazy" onerror="this.remove()"
+          alt="zuumb system architecture. The main path runs left to right: Wazuh Indexer, Ingestion, Triage agent, Correlation engine, Chain stitcher, Dashboard. Above and below it: secret redaction and the Claude API, the local second-opinion model with its retrain loop, advisory incident similarity and human-confirmed manual links, response playbooks, the approval gate, and Wazuh Active Response.">
+        <img class="shot-dark" src="/assets/diagrams/zuumb-system-architecture-dark.png" width="2048" height="1320"
+          loading="lazy" onerror="this.remove()"
+          alt="zuumb system architecture. The main path runs left to right: Wazuh Indexer, Ingestion, Triage agent, Correlation engine, Chain stitcher, Dashboard. Above and below it: secret redaction and the Claude API, the local second-opinion model with its retrain loop, advisory incident similarity and human-confirmed manual links, response playbooks, the approval gate, and Wazuh Active Response.">
+      </a>
+      <figcaption><strong>System architecture.</strong> Who talks to whom. The main path runs along the
+      middle row; redaction and the one LLM call sit above the triage agent, the local second
+      opinion and its retrain loop below it, and the response side (playbooks, approval gate,
+      Wazuh Active Response) runs along the bottom right. Stages hand off through the database rather
+      than calling each other. <a href="/assets/diagrams/zuumb-system-architecture.html">Open the
+      interactive version.</a></figcaption>
+    </figure>
+
+    <figure class="shot">
+      <a href="/assets/diagrams/zuumb-pipeline-workflow.html">
+        <img class="shot-light" src="/assets/diagrams/zuumb-pipeline-workflow-light.png" width="2048" height="1320"
+          loading="lazy" onerror="this.remove()"
+          alt="One zuumb pipeline cycle in four lanes. Wazuh and the detectors feed Ingest. Triage takes up to 40 pending alerts, calling Claude or the local second opinion. If anything new arrived, Correlate, Stitch chains and Similarity refresh run. Separately, an analyst opening an incident triggers proposed tasks, a human approval, and a dry-run log or live dispatch.">
+        <img class="shot-dark" src="/assets/diagrams/zuumb-pipeline-workflow-dark.png" width="2048" height="1320"
+          loading="lazy" onerror="this.remove()"
+          alt="One zuumb pipeline cycle in four lanes. Wazuh and the detectors feed Ingest. Triage takes up to 40 pending alerts, calling Claude or the local second opinion. If anything new arrived, Correlate, Stitch chains and Similarity refresh run. Separately, an analyst opening an incident triggers proposed tasks, a human approval, and a dry-run log or live dispatch.">
+      </a>
+      <figcaption><strong>One pipeline cycle.</strong> The live poller is opt-in
+      (<code>WAZUH_LIVE_POLLING=true</code>) and runs every 60 seconds by default. Each cycle ingests
+      new alerts and triages up to 40 untriaged ones; an alert that fails three times is
+      quarantined. Only if something new came in does it rebuild incidents, chains, and
+      similarity. Response tasks are not part of the cycle: they are proposed when an analyst
+      opens an incident, and nothing dispatches until a person approves it.
+      <a href="/assets/diagrams/zuumb-pipeline-workflow.html">Open the interactive version.</a></figcaption>
+    </figure>
+
+    <figure class="shot">
+      <a href="/assets/diagrams/zuumb-info-flow.html">
+        <img class="shot-light" src="/assets/diagrams/zuumb-info-flow-light.png" width="2048" height="1320"
+          loading="lazy" onerror="this.remove()"
+          alt="How information flows through zuumb in five stages: Sources, Ingest, Score, Group, and Act and learn. Raw Wazuh alert JSON becomes Alert rows, a masked brief goes to Claude and the local second opinion, verdicts feed the correlation engine, and incidents fan out to the chain stitcher, the dashboard, similarity hints, and response playbooks. Analyst overrides loop back as few-shot examples and weekly retraining data.">
+        <img class="shot-dark" src="/assets/diagrams/zuumb-info-flow-dark.png" width="2048" height="1320"
+          loading="lazy" onerror="this.remove()"
+          alt="How information flows through zuumb in five stages: Sources, Ingest, Score, Group, and Act and learn. Raw Wazuh alert JSON becomes Alert rows, a masked brief goes to Claude and the local second opinion, verdicts feed the correlation engine, and incidents fan out to the chain stitcher, the dashboard, similarity hints, and response playbooks. Analyst overrides loop back as few-shot examples and weekly retraining data.">
+      </a>
+      <figcaption><strong>Information flow.</strong> What each piece of data is and where it travels: raw
+      Wazuh alert JSON, then Alert rows, a masked brief, a verdict, and Incident rows, which fan
+      out into chains, similarity hints, and proposed tasks. Dashed paths are advisory or learning
+      loops: analyst overrides come back as few-shot examples for the LLM and as training data
+      for the weekly second-opinion retrain.
+      <a href="/assets/diagrams/zuumb-info-flow.html">Open the interactive version.</a></figcaption>
+    </figure>
+
+    <div class="note">
+      <span class="tag">What the diagrams leave out on purpose</span>
+      Every stage also reads and writes the shared database. Correlation reads Alert rows for
+      entities and timestamps as well as verdicts. The manual-links layer appears only in the
+      architecture view because it is display-only. Detector D2 (network beacons) is a manual
+      CLI, not a running service. Besides the app itself, only D1 and the retrain loop run as their own
+      containers.
+    </div>
+
     <h2 id="requirements">Requirements</h2>
     <table class="t">
       <thead><tr><th>Need</th><th>For</th></tr></thead>
